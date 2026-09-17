@@ -17,17 +17,22 @@ class Config:
     # world
     n_plots: int = 6
     max_plots: int = 12               # landless farmers clear new land up to this
-    cleared_plot_fertility: float = 0.5  # fresh-cleared land yields less than old paddy
-    plot_fertility: float = 0.65      # rice per work tick, ordinary plot
-    good_plot_fertility: float = 1.15  # rice per work tick, the good plot
+    cleared_plot_fertility: float = 0.7  # fresh-cleared land yields less than old paddy
+    plot_fertility: float = 1.0      # rice per work tick, ordinary plot
+    good_plot_fertility: float = 1.75  # rice per work tick, the good plot
     herd_size: int = 4
-    forage_yield: float = 0.3         # rice per work tick for landless farmers
-    milk_per_cow_tick: float = 0.2
+    forage_yield: float = 0.5         # rice per work tick for landless farmers
+    milk_per_cow_tick: float = 0.28
+    # movement (a tick spent walking produces nothing)
+    move_speed: int = 4               # tiles per tick
+    walk_fatigue: float = 1.0         # fatigue per walking tick
     # routine
     night_ticks: int = 4              # ticks 0..3 are rest
     meal_ticks: tuple = (4, 9)        # two meals per day
     rice_per_meal: float = 1.0
-    surplus_threshold: float = 4.0    # rice kept before gifting
+    surplus_threshold: float = 3.0    # rice kept before gifting to non-family
+    trade_reserve: float = 2.0        # rice kept before buying milk
+    milk_per_meal: float = 2.0        # milk that substitutes one rice meal (less filling)
     # family (pairing and births, checked once per life-year)
     fertile_age_min: float = 18.0
     fertile_age_max: float = 45.0

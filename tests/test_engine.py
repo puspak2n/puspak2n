@@ -97,6 +97,49 @@ def test_landless_are_explicit_at_start():
     assert len({a.plot for a in farmers if a.plot is not None}) == Config().n_plots
 
 
+def test_agents_stay_on_land_and_move():
+    from dekot.world import WATER_ROWS
+    sim = Simulation(Config(seed=2))
+    moved = farmed_at_plot = False
+    while sim.day < 6:
+        sim.step_tick()
+        for a in sim.living():
+            assert 0 <= a.pos[0] < sim.world.width
+            assert WATER_ROWS <= a.pos[1] < sim.world.height
+            if a.pos != a.home:
+                moved = True
+            if a.activity == "farming":
+                p = sim.world.plots[a.plot]
+                assert a.pos == [p.x, p.y]  # work only happens at the workplace
+                farmed_at_plot = True
+    assert moved and farmed_at_plot
+
+
+def test_everyone_sleeps_at_home():
+    sim = Simulation(Config(seed=4))
+    sim.run(until_day=5)
+    for _ in range(2):  # first two night ticks of day 5
+        sim.step_tick()
+    for a in sim.living():
+        assert a.pos == a.home or a.activity == "walking"
+
+
+def test_walking_produces_nothing():
+    sim = Simulation(Config(seed=3))
+    while sim.day < 4:
+        before = {x.id: dict(x.inventory) for x in sim.agents}
+        walkers = {x.id for x in sim.living() if x.activity == "walking"}
+        sim.step_tick()
+        for e in sim.ledger.entries[-40:]:
+            pass  # ledger checked via inventory delta below
+        for a in sim.living():
+            if a.activity == "walking" and a.id in before:
+                gained = a.inventory["rice"] - before[a.id]["rice"]
+                assert gained <= 0.0001 or any(
+                    x["action"] in ("receive",) and x["actor"] == a.id
+                    for x in sim.ledger.entries[-60:])
+
+
 def test_tick_stepping_matches_day_stepping():
     a = Simulation(Config(seed=5))
     while a.day < a.max_days and a.stopped is None:

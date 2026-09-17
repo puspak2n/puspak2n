@@ -9,7 +9,7 @@ from .health import daily_health_delta, p_death
 from .ledger import Ledger, OwnershipError
 from .log import Log
 from .relationships import Relationships
-from .world import make_world, assign_roles, owns
+from .world import make_world, assign_roles, owns, clear_site, GRAZE
 
 
 class Simulation:
@@ -85,15 +85,45 @@ class Simulation:
     def _act(self, a, day, tick):
         cfg = self.cfg
         if is_night(tick, cfg):
+            if a.pos != a.home:
+                self._walk(a, a.home)  # caught out at dusk: walk home, losing rest
+                return
+            a.activity = "sleeping"
             a.rest_ticks += 1
-            a.fatigue = max(a.fatigue - 4, 0)
+            a.fatigue = max(a.fatigue - 6, 0)
             return
         if tick in cfg.meal_ticks:
+            a.activity = "eating"  # meals happen wherever they are, home or field
             self._eat(a, day, tick)
             return
         if a.role == "child":
-            return  # children neither work nor tire
+            a.activity = "playing"  # children stay near home; they neither work nor tire
+            return
+        dest = self._workplace(a)
+        if a.pos != dest:
+            self._walk(a, dest)  # a walking tick produces nothing
+            return
         self._work(a, day, tick)
+
+    def _workplace(self, a):
+        if a.role == "cowherd":
+            return list(GRAZE)
+        if a.plot is not None:
+            p = self.world.plots[a.plot]
+            return [p.x, p.y]
+        return list(GRAZE)  # landless forage on the common grazing land
+
+    def _walk(self, a, dest):
+        a.activity = "walking"
+        for _ in range(self.cfg.move_speed):
+            dx, dy = dest[0] - a.pos[0], dest[1] - a.pos[1]
+            if dx == 0 and dy == 0:
+                break
+            if abs(dx) >= abs(dy):
+                a.pos[0] += 1 if dx > 0 else -1
+            else:
+                a.pos[1] += 1 if dy > 0 else -1
+        a.fatigue = min(a.fatigue + self.cfg.walk_fatigue, 100)
 
     def _eat(self, a, day, tick):
         cfg = self.cfg
@@ -105,6 +135,10 @@ class Simulation:
             self._ask_for_food(a, day, tick, need)
         if a.inventory["rice"] >= need:
             self.ledger.apply(day, tick, a, "rice", -need, "eat", "meal")
+            a.meals_eaten += 1
+        elif a.inventory["milk"] >= need * cfg.milk_per_meal:
+            # no rice in the house: a meal of milk instead
+            self.ledger.apply(day, tick, a, "milk", -need * cfg.milk_per_meal, "eat", "meal_milk")
             a.meals_eaten += 1
         else:
             self.events.add(day, tick, type="hungry", agent=a.id)
@@ -131,11 +165,15 @@ class Simulation:
         donors = [d for d in self.living() if d.id != a.id and d.inventory["rice"] >= cfg.surplus_threshold + need]
         if not donors:
             return
-        donor = max(donors, key=lambda d: (d.traits["helpfulness"] + self.rel.get(a.id, d.id), d.id))
-        if donor.traits["helpfulness"] + self.rel.get(a.id, donor.id) < 40:
+        # ask around the village, most willing neighbour first, until someone gives
+        donors.sort(key=lambda d: (-(d.traits["helpfulness"] + self.rel.get(a.id, d.id)), d.id))
+        donor = donors[0]
+        willing = [d for d in donors if d.traits["helpfulness"] + self.rel.get(a.id, d.id) >= 40]
+        if not willing:
             self.events.add(day, tick, type="refused_food", agent=a.id, asked=donor.id)
             self.rel.shift(a.id, donor.id, -3)
             return
+        donor = willing[0]
         self.ledger.transfer(day, tick, donor, a, "rice", need, "gift_to_hungry")
         self.rel.shift(a.id, donor.id, 5)
         self.events.add(day, tick, type="gift", giver=donor.id, taker=a.id, resource="rice")
@@ -147,18 +185,21 @@ class Simulation:
         a.fatigue = min(a.fatigue + 3, 100)
         if a.role == "farmer":
             if a.plot is None:
+                a.activity = "foraging"
                 self.ledger.apply(day, tick, a, "rice", cfg.forage_yield * effort, "forage", "landless")
             elif owns(self.world, a):
+                a.activity = "farming"
                 self.ledger.apply(day, tick, a, "rice", self.world.plots[a.plot].fertility * effort, "farm", f"plot_{a.plot}")
             else:
                 raise OwnershipError(f"{a.id} farming plot {a.plot} held by {self.world.plots[a.plot].holder}")
         elif a.role == "cowherd":
+            a.activity = "herding"
             cowherds = [c for c in self.living() if c.role == "cowherd"]
             milk = self.world.herd_size * cfg.milk_per_cow_tick * effort / len(cowherds)
             self.ledger.apply(day, tick, a, "milk", milk, "herd", "village_herd")
             # cowherds sell milk for rice at 1:1 with the farmer holding the most rice
-            farmers = [f for f in self.living() if f.role == "farmer" and f.inventory["rice"] >= cfg.surplus_threshold + 1]
-            if farmers and a.inventory["milk"] >= 2.0:
+            farmers = [f for f in self.living() if f.role == "farmer" and f.inventory["rice"] >= cfg.trade_reserve + 1]
+            if farmers and a.inventory["milk"] >= 1.5:
                 buyer = max(farmers, key=lambda f: (f.inventory["rice"], f.id))
                 self.ledger.transfer(day, tick, a, buyer, "milk", 1.0, "trade")
                 self.ledger.transfer(day, tick, buyer, a, "rice", 1.0, "trade")
@@ -170,9 +211,10 @@ class Simulation:
         landless = sorted((a for a in self.living() if a.role == "farmer" and a.plot is None),
                           key=lambda x: (-x.traits["ambition"], x.id))
         for a in landless:
-            if len(self.world.plots) >= cfg.max_plots:
+            site = clear_site(self.world, cfg)
+            if site is None:
                 return
-            p = Plot(id=len(self.world.plots), x=len(self.world.plots) + 1, y=2,
+            p = Plot(id=len(self.world.plots), x=site[0], y=site[1],
                      fertility=cfg.cleared_plot_fertility, holder=a.id)
             self.world.plots.append(p)
             a.plot = p.id

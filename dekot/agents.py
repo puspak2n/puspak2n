@@ -19,6 +19,10 @@ class Agent:
     death_day: int | None = None
     partner: str | None = None
     parents: list | None = None
+    # space (SPEC map tiles): where they are, where they live, what they're doing
+    pos: list | None = None
+    home: list | None = None
+    activity: str = "idle"
     inventory: dict = field(default_factory=lambda: {"rice": 4.0, "milk": 0.0})
     # per-day routine tallies, reset at day start
     meals_eaten: int = 0

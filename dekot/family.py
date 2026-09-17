@@ -37,6 +37,7 @@ def _pair_singles(sim, day):
         if sim.rng.random() < cfg.pair_chance:
             singles.remove(match)
             a.partner, match.partner = match.id, a.id
+            match.home = list(a.home)  # the couple shares one house
             sim.rel.shift(a.id, match.id, 30)
             sim.events.add(day, 0, type="paired", a=a.id, b=match.id)
 
@@ -65,7 +66,7 @@ def _born(sim, day, pa, pb):
     nth = sum(1 for x in sim.agents if x.sex == sex)
     child = Agent(id=f"a{i:02d}", name=name_for(sex, nth), traits=traits, age=0.0, sex=sex,
                   role="child", health=70.0, inventory={"rice": 0.0, "milk": 0.0},
-                  parents=[pa.id, pb.id])
+                  parents=[pa.id, pb.id], pos=list(pa.home), home=list(pa.home))
     sim.agents.append(child)
     sim.rel.add_agent(child.id, [x.id for x in sim.agents if x.id != child.id])
     sim.rel.shift(child.id, pa.id, 60)
