@@ -221,7 +221,7 @@ function render(){
       let body = '<div class="name"><span>' + a.name + '</span><span class="role' +
                  (a.role === 'child' ? ' child' : '') + '">' + a.role + '</span></div>';
       if (!a.alive){
-        body += '<div class="deadnote">died day ' + a.death_day + '</div>';
+        body += '<div class="deadnote">died day ' + a.death_day + ', aged ' + Math.round(a.age) + '</div>';
       } else {
         const cls = a.health > 55 ? '' : (a.health > 30 ? 'mid' : 'low');
         body += '<div class="stats">hp ' + fmt(a.health) + ' &middot; rice ' + fmt(a.rice) +

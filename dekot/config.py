@@ -16,10 +16,10 @@ class Config:
     founder_age_max: float = 45.0
     # world
     n_plots: int = 6
-    plot_fertility: float = 0.55      # rice per work tick, ordinary plot
-    good_plot_fertility: float = 1.0  # rice per work tick, the good plot
+    plot_fertility: float = 0.65      # rice per work tick, ordinary plot
+    good_plot_fertility: float = 1.15  # rice per work tick, the good plot
     herd_size: int = 4
-    forage_yield: float = 0.15        # rice per work tick for landless farmers
+    forage_yield: float = 0.3         # rice per work tick for landless farmers
     milk_per_cow_tick: float = 0.2
     # routine
     night_ticks: int = 4              # ticks 0..3 are rest
@@ -31,9 +31,10 @@ class Config:
     fertile_age_max: float = 45.0
     adult_age: float = 14.0           # children start working (landless) at this age
     pair_chance: float = 0.6
-    birth_chance: float = 0.5
+    birth_chance: float = 0.25
     child_rice_at_birth: float = 1.0
-    child_rice_per_meal: float = 0.5  # children eat half rations
+    child_rice_per_meal: float = 0.5   # rice per meal, age 7 to adult
+    infant_rice_per_meal: float = 0.25  # rice per meal under age 7
     # health (routine -> biological conversions, applied once per day)
     food_gain: float = 0.6            # health per day when both meals eaten
     hunger_loss: float = 3.0          # health per missed meal

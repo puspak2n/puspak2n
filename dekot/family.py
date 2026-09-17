@@ -15,6 +15,11 @@ def _fertile(a, cfg):
     return a.alive and cfg.fertile_age_min <= a.age <= cfg.fertile_age_max
 
 
+def _related(a, b):
+    pa, pb = set(a.parents or ()), set(b.parents or ())
+    return a.id in pb or b.id in pa or bool(pa & pb)  # parent-child or siblings
+
+
 def _pair_singles(sim, day):
     cfg = sim.cfg
     by_id = {a.id: a for a in sim.agents}
@@ -24,7 +29,7 @@ def _pair_singles(sim, day):
         key=lambda a: a.id)
     while singles:
         a = singles.pop(0)
-        candidates = [b for b in singles if b.sex != a.sex]
+        candidates = [b for b in singles if b.sex != a.sex and not _related(a, b)]
         if not candidates:
             continue
         match = max(candidates, key=lambda b: (sim.rel.get(a.id, b.id),

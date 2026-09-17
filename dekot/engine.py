@@ -96,7 +96,10 @@ class Simulation:
 
     def _eat(self, a, day, tick):
         cfg = self.cfg
-        need = cfg.child_rice_per_meal if a.role == "child" else cfg.rice_per_meal
+        if a.role == "child":
+            need = cfg.infant_rice_per_meal if a.age < 7 else cfg.child_rice_per_meal
+        else:
+            need = cfg.rice_per_meal
         if a.inventory["rice"] < need:
             self._ask_for_food(a, day, tick, need)
         if a.inventory["rice"] >= need:
@@ -112,6 +115,16 @@ class Simulation:
     def _ask_for_food(self, a, day, tick, need=None):
         cfg = self.cfg
         need = cfg.rice_per_meal if need is None else need
+        # parents feed their own children first: no helpfulness gate, no
+        # self-reserve — a parent goes hungry before their child does
+        if a.parents:
+            by_id = {x.id: x for x in self.agents}
+            for pid in a.parents:
+                p = by_id[pid]
+                if p.alive and p.inventory["rice"] >= need:
+                    self.ledger.transfer(day, tick, p, a, "rice", need, "feed_child")
+                    self.rel.shift(a.id, p.id, 1)
+                    return
         donors = [d for d in self.living() if d.id != a.id and d.inventory["rice"] >= cfg.surplus_threshold + need]
         if not donors:
             return
