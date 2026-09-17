@@ -9,6 +9,7 @@ class Agent:
     name: str
     traits: dict
     age: float                 # life clock, years
+    sex: str = "m"             # "m" or "f"; pairing is opposite-sex in this stylized model
     role: str = "farmer"
     plot: int | None = None
     health: float = 80.0
@@ -37,8 +38,17 @@ class Agent:
         return cls(**d)
 
 
-NAMES = ["Bhima", "Sukanti", "Dasarathi", "Laxmi", "Hari", "Kausalya",
-         "Nrusingha", "Subhadra", "Purna", "Jamuna", "Trilochan", "Sabitri"]
+MALE_NAMES = ["Bhima", "Dasarathi", "Hari", "Nrusingha", "Purna", "Trilochan",
+              "Raghu", "Banamali", "Gopal", "Kanhu", "Dhruba", "Shyam"]
+FEMALE_NAMES = ["Sukanti", "Laxmi", "Kausalya", "Subhadra", "Jamuna", "Sabitri",
+                "Malati", "Kuni", "Basanti", "Nirmala", "Puspa", "Gita"]
+
+
+def name_for(sex, nth):
+    """nth same-sex villager gets the nth name; repeats gain a numeral."""
+    pool = FEMALE_NAMES if sex == "f" else MALE_NAMES
+    name = pool[nth % len(pool)]
+    return name if nth < len(pool) else f"{name} {nth // len(pool) + 1}"
 
 
 def make_founders(cfg, rng):
@@ -47,5 +57,7 @@ def make_founders(cfg, rng):
         frac = i / max(cfg.n_agents - 1, 1)
         age = cfg.founder_age_min + frac * (cfg.founder_age_max - cfg.founder_age_min)
         traits = {t: rng.randint(10, 90) for t in TRAITS}
-        agents.append(Agent(id=f"a{i:02d}", name=NAMES[i % len(NAMES)], traits=traits, age=age))
+        sex = "m" if i % 2 == 0 else "f"
+        agents.append(Agent(id=f"a{i:02d}", name=name_for(sex, i // 2), traits=traits,
+                            age=age, sex=sex))
     return agents

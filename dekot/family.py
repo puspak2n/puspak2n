@@ -3,7 +3,7 @@
 Runs once per life-year, like the dispute. All draws come from sim.rng and all
 iteration orders are sorted, so replay determinism is preserved.
 """
-from .agents import Agent, NAMES, TRAITS
+from .agents import Agent, TRAITS, name_for
 
 
 def year_tick(sim, day):
@@ -22,10 +22,13 @@ def _pair_singles(sim, day):
         (a for a in sim.living()
          if _fertile(a, cfg) and (a.partner is None or not by_id[a.partner].alive)),
         key=lambda a: a.id)
-    while len(singles) >= 2:
+    while singles:
         a = singles.pop(0)
-        match = max(singles, key=lambda b: (sim.rel.get(a.id, b.id),
-                                            a.traits["sociability"] + b.traits["sociability"], b.id))
+        candidates = [b for b in singles if b.sex != a.sex]
+        if not candidates:
+            continue
+        match = max(candidates, key=lambda b: (sim.rel.get(a.id, b.id),
+                                               a.traits["sociability"] + b.traits["sociability"], b.id))
         if sim.rng.random() < cfg.pair_chance:
             singles.remove(match)
             a.partner, match.partner = match.id, a.id
@@ -53,7 +56,9 @@ def _born(sim, day, pa, pb):
     i = len(sim.agents)
     traits = {t: max(0, min(100, (pa.traits[t] + pb.traits[t]) // 2 + sim.rng.randint(-10, 10)))
               for t in TRAITS}
-    child = Agent(id=f"a{i:02d}", name=NAMES[i % len(NAMES)], traits=traits, age=0.0,
+    sex = "f" if sim.rng.random() < 0.5 else "m"
+    nth = sum(1 for x in sim.agents if x.sex == sex)
+    child = Agent(id=f"a{i:02d}", name=name_for(sex, nth), traits=traits, age=0.0, sex=sex,
                   role="child", health=70.0, inventory={"rice": 0.0, "milk": 0.0},
                   parents=[pa.id, pb.id])
     sim.agents.append(child)
