@@ -62,8 +62,12 @@ h2{font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:upperca
 .plot .pid{font-size:10px; color:var(--muted); letter-spacing:.05em;}
 .plot .holder{font-size:11px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .map-note{font-size:11px; color:var(--muted); margin-top:8px;}
-.folk{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px;}
-.person{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; min-width:0;}
+.folk{display:flex; flex-direction:column; gap:10px;}
+.house{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px;}
+.house h3{font-size:12px; font-weight:600; margin:0 0 8px; color:var(--accent);}
+.house h3 .hnote{color:var(--muted); font-weight:400;}
+.house .members{display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:8px;}
+.person{background:var(--ground); border:1px solid var(--line); border-radius:6px; padding:10px; min-width:0;}
 .person.dead{opacity:.55;}
 .person .name{font-weight:600; font-size:14px; display:flex; justify-content:space-between; gap:6px;}
 .person .name .role{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; align-self:center; flex:none;}
@@ -112,7 +116,7 @@ h2{font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:upperca
 </section>
 
 <section>
-  <h2>Villagers</h2>
+  <h2>Households</h2>
   <div class="folk" id="folk"></div>
 </section>
 
@@ -180,22 +184,54 @@ function render(){
 
   const folk = document.getElementById('folk');
   folk.innerHTML = '';
+  const byId = {}; S.agents.forEach(a => byId[a.id] = a);
+  // household key: your couple if paired, else your parents' couple, else yourself
+  const houses = new Map();
   S.agents.forEach(a => {
-    const div = document.createElement('div');
-    div.className = 'person' + (a.alive ? '' : ' dead');
-    let body = '<div class="name"><span>' + a.name + '</span><span class="role' +
-               (a.role === 'child' ? ' child' : '') + '">' + a.role + '</span></div>';
-    if (a.parents) body += '<div class="stats">child of ' + a.parents.map(n).join(' & ') + '</div>';
-    if (!a.alive){
-      body += '<div class="deadnote">died day ' + a.death_day + '</div>';
+    let key, kind;
+    if (a.partner){ key = [a.id, a.partner].sort().join('|'); kind = 'couple'; }
+    else if (a.parents){ key = a.parents.slice().sort().join('|'); kind = 'couple'; }
+    else { key = 'single:' + a.id; kind = 'single'; }
+    if (!houses.has(key)) houses.set(key, {kind, parents: [], children: []});
+    const h = houses.get(key);
+    (kind === 'couple' && key.split('|').includes(a.id) ? h.parents : h.children).push(a);
+  });
+  const keys = [...houses.keys()].sort((x, y) => {
+    const sx = houses.get(x).kind === 'single', sy = houses.get(y).kind === 'single';
+    if (sx !== sy) return sx ? 1 : -1;
+    return x < y ? -1 : 1;
+  });
+  keys.forEach(key => {
+    const h = houses.get(key);
+    const box = document.createElement('div');
+    box.className = 'house';
+    let label;
+    if (h.kind === 'couple'){
+      label = key.split('|').map(id => byId[id].name + (byId[id].alive ? '' : ' &dagger;')).join(' &amp; ');
+      if (h.children.length) label += ' <span class="hnote">&middot; ' + h.children.length +
+        (h.children.length === 1 ? ' child' : ' children') + '</span>';
     } else {
-      const cls = a.health > 55 ? '' : (a.health > 30 ? 'mid' : 'low');
-      body += '<div class="stats">hp ' + fmt(a.health) + ' &middot; rice ' + fmt(a.rice) +
-              ' &middot; meals ' + a.meals + '/2 &middot; age ' + fmt(a.age) + '</div>' +
-              '<div class="hbar"><i class="' + cls + '" style="width:' + Math.max(a.health,2) + '%"></i></div>';
+      label = h.children[0].name + ' <span class="hnote">&middot; on their own</span>';
     }
-    div.innerHTML = body;
-    folk.appendChild(div);
+    box.innerHTML = '<h3>' + label + '</h3><div class="members"></div>';
+    const grid = box.querySelector('.members');
+    h.parents.sort((a,b) => a.id < b.id ? -1 : 1).concat(h.children).forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'person' + (a.alive ? '' : ' dead');
+      let body = '<div class="name"><span>' + a.name + '</span><span class="role' +
+                 (a.role === 'child' ? ' child' : '') + '">' + a.role + '</span></div>';
+      if (!a.alive){
+        body += '<div class="deadnote">died day ' + a.death_day + '</div>';
+      } else {
+        const cls = a.health > 55 ? '' : (a.health > 30 ? 'mid' : 'low');
+        body += '<div class="stats">hp ' + fmt(a.health) + ' &middot; rice ' + fmt(a.rice) +
+                ' &middot; meals ' + a.meals + '/2 &middot; age ' + fmt(a.age) + '</div>' +
+                '<div class="hbar"><i class="' + cls + '" style="width:' + Math.max(a.health,2) + '%"></i></div>';
+      }
+      div.innerHTML = body;
+      grid.appendChild(div);
+    });
+    folk.appendChild(box);
   });
 
   const feed = document.getElementById('feed');
