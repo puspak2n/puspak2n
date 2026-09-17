@@ -97,6 +97,20 @@ def test_landless_are_explicit_at_start():
     assert len({a.plot for a in farmers if a.plot is not None}) == Config().n_plots
 
 
+def test_births_are_deterministic_and_ledgered():
+    a = Simulation(Config(seed=11)).run()
+    b = Simulation(Config(seed=11)).run()
+    assert logs(a) == logs(b)
+    births = [e for e in a.events.entries if e["type"] == "birth"]
+    for e in births:
+        child = a.agent(e["child"])
+        assert child.age < Config().duration_years + 0.001
+        assert child.parents == e["parents"]
+        # every born child has ledger entries for both resources
+        rec = a.ledger.reconstruct()
+        assert (child.id, "rice") in rec and (child.id, "milk") in rec
+
+
 def test_experiment_keeps_starting_village_fixed():
     a = Simulation(Config(seed=1)); b = Simulation(Config(seed=999))
     assert [x.to_dict() for x in a.agents] == [x.to_dict() for x in b.agents]

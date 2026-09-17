@@ -26,6 +26,14 @@ class Config:
     meal_ticks: tuple = (4, 9)        # two meals per day
     rice_per_meal: float = 1.0
     surplus_threshold: float = 4.0    # rice kept before gifting
+    # family (pairing and births, checked once per life-year)
+    fertile_age_min: float = 18.0
+    fertile_age_max: float = 45.0
+    adult_age: float = 14.0           # children start working (landless) at this age
+    pair_chance: float = 0.6
+    birth_chance: float = 0.5
+    child_rice_at_birth: float = 1.0
+    child_rice_per_meal: float = 0.5  # children eat half rations
     # health (routine -> biological conversions, applied once per day)
     food_gain: float = 0.6            # health per day when both meals eaten
     hunger_loss: float = 3.0          # health per missed meal

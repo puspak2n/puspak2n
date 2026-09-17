@@ -13,6 +13,10 @@ class Relationships:
                 for b in agent_ids[i + 1:]:
                     self.affinity.setdefault(key(a, b), 0.0)
 
+    def add_agent(self, new_id, other_ids):
+        for b in other_ids:
+            self.affinity.setdefault(key(new_id, b), 0.0)
+
     def get(self, a, b):
         return self.affinity[key(a, b)]
 

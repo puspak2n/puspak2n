@@ -16,6 +16,8 @@ class Agent:
     mood: float = 60.0
     alive: bool = True
     death_day: int | None = None
+    partner: str | None = None
+    parents: list | None = None
     inventory: dict = field(default_factory=lambda: {"rice": 4.0, "milk": 0.0})
     # per-day routine tallies, reset at day start
     meals_eaten: int = 0

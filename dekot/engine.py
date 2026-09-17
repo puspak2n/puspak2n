@@ -4,6 +4,7 @@ from .agents import make_founders
 from .clock import is_night, age_after_day
 from .config import Config
 from .disputes import contest_good_plot
+from .family import year_tick, come_of_age
 from .health import daily_health_delta, p_death
 from .ledger import Ledger, OwnershipError
 from .log import Log
@@ -54,6 +55,7 @@ class Simulation:
         self._assign_vacant_plots(day)
         if day % cfg.days_per_year == 0 and day > 0:
             contest_good_plot(self, day)
+            year_tick(self, day)
         for tick in range(cfg.ticks_per_day):
             for a in self.living():
                 self._act(a, day, tick)
@@ -74,14 +76,17 @@ class Simulation:
         if tick in cfg.meal_ticks:
             self._eat(a, day, tick)
             return
+        if a.role == "child":
+            return  # children neither work nor tire
         self._work(a, day, tick)
 
     def _eat(self, a, day, tick):
         cfg = self.cfg
-        if a.inventory["rice"] < cfg.rice_per_meal:
-            self._ask_for_food(a, day, tick)
-        if a.inventory["rice"] >= cfg.rice_per_meal:
-            self.ledger.apply(day, tick, a, "rice", -cfg.rice_per_meal, "eat", "meal")
+        need = cfg.child_rice_per_meal if a.role == "child" else cfg.rice_per_meal
+        if a.inventory["rice"] < need:
+            self._ask_for_food(a, day, tick, need)
+        if a.inventory["rice"] >= need:
+            self.ledger.apply(day, tick, a, "rice", -need, "eat", "meal")
             a.meals_eaten += 1
         else:
             self.events.add(day, tick, type="hungry", agent=a.id)
@@ -90,9 +95,10 @@ class Simulation:
             self.ledger.apply(day, tick, a, "milk", -1.0, "drink", "meal")
             a.milk_drunk += 1.0
 
-    def _ask_for_food(self, a, day, tick):
+    def _ask_for_food(self, a, day, tick, need=None):
         cfg = self.cfg
-        donors = [d for d in self.living() if d.id != a.id and d.inventory["rice"] >= cfg.surplus_threshold + cfg.rice_per_meal]
+        need = cfg.rice_per_meal if need is None else need
+        donors = [d for d in self.living() if d.id != a.id and d.inventory["rice"] >= cfg.surplus_threshold + need]
         if not donors:
             return
         donor = max(donors, key=lambda d: (d.traits["helpfulness"] + self.rel.get(a.id, d.id), d.id))
@@ -100,7 +106,7 @@ class Simulation:
             self.events.add(day, tick, type="refused_food", agent=a.id, asked=donor.id)
             self.rel.shift(a.id, donor.id, -3)
             return
-        self.ledger.transfer(day, tick, donor, a, "rice", cfg.rice_per_meal, "gift_to_hungry")
+        self.ledger.transfer(day, tick, donor, a, "rice", need, "gift_to_hungry")
         self.rel.shift(a.id, donor.id, 5)
         self.events.add(day, tick, type="gift", giver=donor.id, taker=a.id, resource="rice")
 
@@ -142,6 +148,8 @@ class Simulation:
         a.health = max(0.0, min(100.0, a.health + daily_health_delta(a, cfg)))
         a.mood = max(0.0, min(100.0, a.mood + (2 if a.meals_eaten == 2 else -2)))
         a.age = age_after_day(a.age, cfg)
+        if a.role == "child" and a.age >= cfg.adult_age:
+            come_of_age(self, a, day)
         p = p_death(a.age, a.health, cfg)
         if self.rng.random() < p or a.health <= 0:
             a.alive = False

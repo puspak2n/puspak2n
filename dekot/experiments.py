@@ -40,6 +40,8 @@ def run_experiment(cfg, runs, base_seed=1000):
         sim.run()
         stops[sim.stopped] += 1
         for a in sim.agents:
+            if a.id not in start:
+                continue  # born mid-run; founder cohorts only
             c = cohort(start[a.id])
             t = ((a.death_day + 1) if not a.alive else sim.day) / cfg.days_per_year
             obs[c].append((t, 0 if a.alive else 1))
