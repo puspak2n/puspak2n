@@ -37,20 +37,40 @@ over the scene; charts live behind a Village Records button.
 
 ## Phases
 
+### Phase 0 — Visual sample (approve the style before any engine work)
+- One representative scene, code-drawn pixel art: houses, river, paddy
+  fields, cows, banyan, a few recognizable villagers, day/night lighting.
+- Published as an artifact, judged on a phone. Sprite-sheet assets remain
+  an open option if code-drawn art disappoints.
+- Exit: an explicit yes/no on "does this look like the village I want?"
+
 ### Phase 1 — Space in the engine
 - Widen the map to a 24×16 tile layout: river, paths, one home per
   founding household, plots (existing x,y), grazing field, banyan.
 - Agent `pos`/`dest`/`activity`; a `_move` step in `_act` before work;
   meals at home or in the field, rest at home, disputes gather at the
   good plot.
+- **Travel economics (settled before building):** a tick spent walking
+  produces nothing — work requires being at the plot or herd, so distant
+  plots genuinely cost output. This changes the economy, so the 1,000-seed
+  experiment metrics are re-run before/after and the calibration
+  (fertility, forage, rations) re-tuned to hold the Phase-"family fixes"
+  mortality profile (~25% child mortality, elder-weighted deaths).
 - Tests: replay byte-identical, mid-day save/resume with positions,
   fingerprint updated, no agent occupies an impassable tile.
 - Exit: `events.jsonl` unchanged in meaning; `/state` can report space.
 
-### Phase 2 — Server surface
-- Snapshot gains positions, activities, destinations, tick fraction,
-  and a `since=seq` parameter for recap digests.
-- Exit: `curl /state` shows a walking village in numbers.
+### Phase 2 — One shared state format, tick-level
+- A single schema used identically by the live `/state` endpoint and by
+  recorded playback files: monotonic `tick_id` (`day * ticks_per_day +
+  tick`), per-agent position, destination, activity, plus events keyed by
+  tick_id. Daily snapshots are not enough to replay trips, gifts, or
+  disputes; recordings capture every tick.
+- Interpolation contract: the renderer eases toward reported targets and
+  **snaps** on any discontinuity greater than one tile — pause, speed
+  change, and timeline scrubbing never slide characters across the map.
+- Exit: `curl /state` and a recorded file parse with the same code, and
+  scrubbing a recording never produces a gliding villager.
 
 ### Phase 3 — The scene (first visible build)
 - Isometric canvas renderer: tile drawing, depth sort, day/night tint,
@@ -67,9 +87,21 @@ over the scene; charts live behind a Village Records button.
   household view.
 - Exit: everything in "What it will feel like" works on a phone.
 
-### Phase 5 — Polish (as simulation features arrive)
-- Weather, festivals on piety days, richer buildings, herd behaviour,
-  AI-written diaries when the LLM milestone lands.
+### Phase 5 — Live deployment (an explicit deliverable, not a footnote)
+- The village runs continuously on a host: a documented service setup
+  (systemd unit or equivalent) around `dekot serve`, persistent checkpoint
+  storage, verified restart/reboot recovery, private phone access
+  (Tailscale or LAN documented), and reopening the page always reconnects
+  to the existing village — never resets it.
+- Exit: the owner opens the page on a phone days later and the same
+  village has kept living.
+
+### Phase 6 — Richer village life (as simulation features arrive)
+- Weather and festivals: **if they affect farming or behaviour they are
+  engine features first** (seeded, tested, in the fingerprint), rendered
+  second; only purely cosmetic ambience lives in the renderer alone.
+- Herd behaviour, richer buildings, AI-written diaries when the LLM
+  milestone lands.
 
 ## Risks and answers
 - **Pixel art quality from code**: constrain the palette (6 colours per
@@ -82,6 +114,8 @@ over the scene; charts live behind a Village Records button.
   never the village.
 
 ## Order of work
-Phase 1 and 2 together (one engine session), Phase 3 next (the big
-visual session, artifact preview at the end), Phase 4, then 5. Each phase
-ends pushed to the branch with tests green.
+Visual sample → engine space → shared state format → recorded animated
+viewer → live deployment → richer village life. Each phase ends pushed to
+the branch with tests green. A later stylized-3D version would reuse the
+simulation and interface work wholesale; the rendering and artwork would
+be largely replaced — accepted.
