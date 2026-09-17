@@ -68,6 +68,7 @@ class Simulation:
             if day % cfg.days_per_year == 0 and day > 0:
                 contest_good_plot(self, day)
                 year_tick(self, day)
+                self._clear_new_land(day)
         for a in self.living():
             self._act(a, day, tick)
         self.tick += 1
@@ -115,16 +116,18 @@ class Simulation:
     def _ask_for_food(self, a, day, tick, need=None):
         cfg = self.cfg
         need = cfg.rice_per_meal if need is None else need
-        # parents feed their own children first: no helpfulness gate, no
-        # self-reserve — a parent goes hungry before their child does
-        if a.parents:
-            by_id = {x.id: x for x in self.agents}
-            for pid in a.parents:
-                p = by_id[pid]
-                if p.alive and p.inventory["rice"] >= need:
-                    self.ledger.transfer(day, tick, p, a, "rice", need, "feed_child")
-                    self.rel.shift(a.id, p.id, 1)
-                    return
+        # family shares food first — spouse, then parents, then own children —
+        # with no helpfulness gate and no self-reserve: a household eats or
+        # goes hungry together
+        by_id = {x.id: x for x in self.agents}
+        family = ([a.partner] if a.partner else []) + list(a.parents or []) + \
+                 [x.id for x in self.agents if x.parents and a.id in x.parents]
+        for fid in family:
+            f = by_id[fid]
+            if f.alive and f.inventory["rice"] >= need:
+                self.ledger.transfer(day, tick, f, a, "rice", need, "share_family")
+                self.rel.shift(a.id, f.id, 1)
+                return
         donors = [d for d in self.living() if d.id != a.id and d.inventory["rice"] >= cfg.surplus_threshold + need]
         if not donors:
             return
@@ -159,6 +162,21 @@ class Simulation:
                 buyer = max(farmers, key=lambda f: (f.inventory["rice"], f.id))
                 self.ledger.transfer(day, tick, a, buyer, "milk", 1.0, "trade")
                 self.ledger.transfer(day, tick, buyer, a, "rice", 1.0, "trade")
+
+    def _clear_new_land(self, day):
+        """Once a year, each landless farmer clears a fresh plot while land remains."""
+        from .world import Plot
+        cfg = self.cfg
+        landless = sorted((a for a in self.living() if a.role == "farmer" and a.plot is None),
+                          key=lambda x: (-x.traits["ambition"], x.id))
+        for a in landless:
+            if len(self.world.plots) >= cfg.max_plots:
+                return
+            p = Plot(id=len(self.world.plots), x=len(self.world.plots) + 1, y=2,
+                     fertility=cfg.cleared_plot_fertility, holder=a.id)
+            self.world.plots.append(p)
+            a.plot = p.id
+            self.events.add(day, 0, type="plot_cleared", agent=a.id, plot=p.id)
 
     def _assign_vacant_plots(self, day):
         free = [p for p in self.world.plots if p.holder is None]

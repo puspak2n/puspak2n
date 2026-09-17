@@ -16,6 +16,8 @@ class Config:
     founder_age_max: float = 45.0
     # world
     n_plots: int = 6
+    max_plots: int = 12               # landless farmers clear new land up to this
+    cleared_plot_fertility: float = 0.5  # fresh-cleared land yields less than old paddy
     plot_fertility: float = 0.65      # rice per work tick, ordinary plot
     good_plot_fertility: float = 1.15  # rice per work tick, the good plot
     herd_size: int = 4
@@ -41,7 +43,8 @@ class Config:
     rest_gain: float = 0.4            # health per day at full rest
     fatigue_loss: float = 0.5         # health per overwork tick
     milk_gain: float = 0.3            # health per day when >=1 milk consumed
-    age_decay_k: float = 0.004        # health per day per year of age above 30
+    age_decay_k: float = 0.03         # health per day per year of age above 30
+    recovery_taper: float = 25.0      # recovery runs at full speed below (100 - this), 0 at 100
     # mortality (annual hazard)
     hazard_base: float = 0.0002
     hazard_k: float = 0.09
