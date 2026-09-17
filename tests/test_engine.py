@@ -97,6 +97,31 @@ def test_landless_are_explicit_at_start():
     assert len({a.plot for a in farmers if a.plot is not None}) == Config().n_plots
 
 
+def test_tick_stepping_matches_day_stepping():
+    a = Simulation(Config(seed=5))
+    while a.day < a.max_days and a.stopped is None:
+        a.step_day()
+    b = Simulation(Config(seed=5))
+    while b.day < b.max_days and b.stopped is None:
+        b.step_tick()
+    assert logs(a) == logs(b)
+
+
+def test_save_resume_mid_day_matches_uninterrupted():
+    full = Simulation(Config(seed=3)).run()
+    part = Simulation(Config(seed=3))
+    for _ in range(20 * Config().ticks_per_day + 7):  # stop mid-day at tick 7
+        part.step_tick()
+    assert part.tick == 7
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "state.json")
+        save(part, p)
+        resumed = load(p)
+        assert resumed.tick == 7
+        resumed.run()
+    assert logs(resumed) == logs(full)
+
+
 def test_births_are_deterministic_and_ledgered():
     a = Simulation(Config(seed=11)).run()
     b = Simulation(Config(seed=11)).run()

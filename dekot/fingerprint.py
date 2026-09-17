@@ -3,7 +3,7 @@ import hashlib
 import os
 import sys
 
-EXCLUDE = {"cli.py", "__main__.py", "fingerprint.py"}
+EXCLUDE = {"cli.py", "__main__.py", "fingerprint.py", "server.py"}
 
 
 def engine_fingerprint() -> str:

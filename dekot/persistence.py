@@ -29,6 +29,7 @@ def save(sim: Simulation, path):
         "engine_fingerprint": engine_fingerprint(),
         "config": sim.cfg.to_dict(),
         "day": sim.day,
+        "tick": sim.tick,
         "stopped": sim.stopped,
         "rng": _rng_to_json(sim.rng.getstate()),
         "agents": [a.to_dict() for a in sim.agents],
@@ -37,8 +38,11 @@ def save(sim: Simulation, path):
         "events": sim.events.entries, "events_seq": sim.events.seq,
         "ledger": sim.ledger.entries, "ledger_seq": sim.ledger.seq,
     }
-    with open(path, "w") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(d, f, sort_keys=True)
+    import os
+    os.replace(tmp, path)  # atomic: a crash mid-write never corrupts the checkpoint
 
 
 def load(path, force=False) -> Simulation:
@@ -52,6 +56,7 @@ def load(path, force=False) -> Simulation:
     sim.rng = random.Random()
     sim.rng.setstate(_rng_from_json(d["rng"]))
     sim.day = d["day"]
+    sim.tick = d.get("tick", 0)
     sim.stopped = d["stopped"]
     sim.agents = [Agent.from_dict(a) for a in d["agents"]]
     sim.world = World.from_dict(d["world"])

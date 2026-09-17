@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dekot Live</title>
+<style>
+:root{
+  --ground:#F6F4EA; --panel:#FDFCF5; --ink:#26281F; --muted:#77796A;
+  --line:#DDDACA; --accent:#527D2E; --accent-soft:#E4EBD4;
+  --river:#39698A; --river-soft:#D9E5EC; --alert:#A8452F; --warn:#A87B2F;
+  --bar-bg:#E7E4D6;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --ground:#171912; --panel:#20231A; --ink:#E6E4D4; --muted:#9A9C8B;
+    --line:#34372A; --accent:#95C25F; --accent-soft:#2C351F;
+    --river:#7FAECB; --river-soft:#1E2C36; --alert:#D9836B; --warn:#D9B36B;
+    --bar-bg:#2B2E22;
+  }
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:14px;
+  padding:env(safe-area-inset-top,0px) 16px calc(32px + env(safe-area-inset-bottom,0px));
+  max-width:720px; margin-inline:auto;
+}
+h1{font-family:Georgia,serif; font-size:26px; font-weight:700; margin:20px 0 2px;}
+.sub{color:var(--muted); font-size:13px; margin:0 0 14px;}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;}
+.bar{
+  position:sticky; top:0; z-index:5; background:var(--ground);
+  padding:10px 0 8px; border-bottom:1px solid var(--line); margin-bottom:14px;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.clock{font-family:Georgia,serif; font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;}
+.clock small{display:block; font-family:ui-monospace,monospace; font-weight:400; font-size:11px; color:var(--muted);}
+.live{width:9px; height:9px; border-radius:50%; background:var(--accent); flex:none;}
+.live.off{background:var(--muted);}
+@keyframes pulse{50%{opacity:.35;}}
+.live.on{animation:pulse 2s infinite;}
+@media (prefers-reduced-motion: reduce){.live.on{animation:none;}}
+.spacer{flex:1;}
+button, select{
+  font:inherit; font-size:13px; padding:7px 12px; border-radius:6px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer;
+}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+section{margin:0 0 22px;}
+h2{font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 8px;}
+.map{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px;}
+.river{
+  height:14px; border-radius:7px; background:var(--river-soft);
+  background-image:repeating-linear-gradient(100deg, transparent 0 14px, var(--river) 14px 15px);
+  opacity:.85; margin-bottom:10px;
+}
+.plots{display:grid; grid-template-columns:repeat(6,1fr); gap:6px;}
+.plot{border:1px solid var(--line); border-radius:6px; padding:6px 4px; text-align:center; background:var(--bar-bg); min-width:0;}
+.plot.held{background:var(--accent-soft); border-color:var(--accent);}
+.plot.good{box-shadow:inset 0 0 0 2px var(--accent);}
+.plot .pid{font-size:10px; color:var(--muted); letter-spacing:.05em;}
+.plot .holder{font-size:11px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.map-note{font-size:11px; color:var(--muted); margin-top:8px;}
+.folk{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px;}
+.person{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; min-width:0;}
+.person.dead{opacity:.55;}
+.person .name{font-weight:600; font-size:14px; display:flex; justify-content:space-between; gap:6px;}
+.person .name .role{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; align-self:center; flex:none;}
+.person .name .role.child{color:var(--river);}
+.person .stats{font-family:ui-monospace,monospace; font-size:11px; color:var(--muted); margin-top:4px; font-variant-numeric:tabular-nums;}
+.hbar{height:5px; border-radius:3px; background:var(--bar-bg); margin-top:7px; overflow:hidden;}
+.hbar i{display:block; height:100%; border-radius:3px; background:var(--accent);}
+.hbar i.mid{background:var(--warn);}
+.hbar i.low{background:var(--alert);}
+.deadnote{font-size:11px; color:var(--alert); margin-top:6px;}
+.feed{
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+  padding:10px 12px; font-family:ui-monospace,Menlo,monospace; font-size:12px;
+  line-height:1.6; max-height:340px; overflow:auto;
+}
+.feed div{white-space:nowrap;}
+.feed .d{color:var(--muted);}
+.feed .death{color:var(--alert); font-weight:500;}
+.feed .dispute{color:var(--river); font-weight:500;}
+.feed .gift{color:var(--accent);}
+.feed .hungry{color:var(--warn);}
+.feed .family{color:var(--river);}
+.offline{color:var(--alert); font-size:12px; display:none;}
+</style>
+</head>
+<body>
+<h1>Dekot Live</h1>
+<p class="sub" id="subline">Connecting to the village&hellip;</p>
+
+<div class="bar">
+  <span class="live on" id="dot"></span>
+  <div class="clock">Day <span id="dnum">&ndash;</span> &middot; tick <span id="tnum">&ndash;</span><small id="ynum"></small></div>
+  <div class="spacer"></div>
+  <button class="primary" id="pause">Pause</button>
+  <select id="speed" aria-label="Speed"></select>
+</div>
+<p class="offline" id="offline">Can&rsquo;t reach the village server &mdash; retrying&hellip;</p>
+
+<section>
+  <h2>Paddy plots along the river</h2>
+  <div class="map">
+    <div class="river"></div>
+    <div class="plots" id="plots"></div>
+    <div class="map-note">Plot 0 (outlined) is the high-fertility plot by the water &mdash; contested every year.</div>
+  </div>
+</section>
+
+<section>
+  <h2>Villagers</h2>
+  <div class="folk" id="folk"></div>
+</section>
+
+<section>
+  <h2>Recent events</h2>
+  <div class="feed" id="feed"></div>
+</section>
+
+<script>
+let S = null, names = {}, pollTimer = null;
+
+function fmt(x){ return typeof x === 'number' ? (Math.round(x*10)/10) : x; }
+function n(id){ return names[id] || id; }
+
+function line(e){
+  switch(e.type){
+    case 'founded': return ['', 'Dekot founded with ' + e.population + ' villagers'];
+    case 'plot_assigned': return ['', n(e.agent) + ' takes vacant plot P' + e.plot];
+    case 'plot_claimed': return ['dispute', n(e.agent) + ' claims the good plot (vacant)'];
+    case 'dispute': return ['dispute', n(e.challenger) + ' challenges ' + n(e.holder) + ' for the good plot — ' +
+      (e.outcome === 'challenger_wins' ? n(e.challenger) + ' wins' : n(e.holder) + ' holds')];
+    case 'gift': return ['gift', n(e.giver) + ' gives rice to hungry ' + n(e.taker)];
+    case 'refused_food': return ['hungry', n(e.asked) + ' refuses food to ' + n(e.agent)];
+    case 'hungry': return ['hungry', n(e.agent) + ' goes hungry'];
+    case 'death': return ['death', n(e.agent) + ' dies of ' + e.cause + ', aged ' + Math.round(e.age)];
+    case 'paired': return ['family', n(e.a) + ' and ' + n(e.b) + ' become a couple'];
+    case 'birth': return ['family', e.name + ' is born to ' + e.parents.map(n).join(' and ')];
+    case 'came_of_age': return ['family', n(e.agent) + ' comes of age and joins the farmers'];
+    case 'stopped': return ['', 'simulation stopped: ' + e.reason];
+  }
+  return ['', e.type];
+}
+
+function render(){
+  if (!S) return;
+  names = {}; S.agents.forEach(a => names[a.id] = a.name);
+  document.getElementById('dnum').textContent = S.day;
+  document.getElementById('tnum').textContent = S.tick;
+  const year = Math.floor(S.day / S.days_per_year) + 1;
+  const years = Math.round(S.max_days / S.days_per_year);
+  document.getElementById('ynum').textContent =
+    S.stopped ? 'run over: ' + S.stopped : 'year ' + year + ' of ' + years + (S.paused ? ' · paused' : '');
+  document.getElementById('subline').textContent =
+    'Kalahandi, Odisha · seed ' + S.seed + ' · ' + S.population + ' alive · ' + S.speed + ', live from the server.';
+  const dot = document.getElementById('dot');
+  dot.className = 'live ' + ((S.paused || S.stopped) ? 'off' : 'on');
+  document.getElementById('pause').textContent = S.paused ? 'Resume' : 'Pause';
+
+  const sel = document.getElementById('speed');
+  if (sel.options.length !== S.speeds.length){
+    sel.innerHTML = '';
+    S.speeds.forEach(s => { const o = document.createElement('option'); o.value = o.textContent = s; sel.appendChild(o); });
+  }
+  sel.value = S.speed;
+
+  const plots = document.getElementById('plots');
+  plots.innerHTML = '';
+  S.plots.forEach((p,i) => {
+    const div = document.createElement('div');
+    div.className = 'plot' + (p.holder ? ' held' : '') + (i === 0 ? ' good' : '');
+    div.innerHTML = '<div class="pid">P' + p.id + ' &middot; ' + p.fertility.toFixed(2) + '</div>' +
+      '<div class="holder">' + (p.holder ? n(p.holder) : '&mdash;') + '</div>';
+    plots.appendChild(div);
+  });
+
+  const folk = document.getElementById('folk');
+  folk.innerHTML = '';
+  S.agents.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'person' + (a.alive ? '' : ' dead');
+    let body = '<div class="name"><span>' + a.name + '</span><span class="role' +
+               (a.role === 'child' ? ' child' : '') + '">' + a.role + '</span></div>';
+    if (a.parents) body += '<div class="stats">child of ' + a.parents.map(n).join(' & ') + '</div>';
+    if (!a.alive){
+      body += '<div class="deadnote">died day ' + a.death_day + '</div>';
+    } else {
+      const cls = a.health > 55 ? '' : (a.health > 30 ? 'mid' : 'low');
+      body += '<div class="stats">hp ' + fmt(a.health) + ' &middot; rice ' + fmt(a.rice) +
+              ' &middot; meals ' + a.meals + '/2 &middot; age ' + fmt(a.age) + '</div>' +
+              '<div class="hbar"><i class="' + cls + '" style="width:' + Math.max(a.health,2) + '%"></i></div>';
+    }
+    div.innerHTML = body;
+    folk.appendChild(div);
+  });
+
+  const feed = document.getElementById('feed');
+  const stick = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 20;
+  feed.innerHTML = '';
+  S.feed.forEach(e => {
+    const [cls, text] = line(e);
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.innerHTML = '<span class="d">d' + String(e.day).padStart(2,'0') + '.' + e.tick + '</span> ' + text;
+    feed.appendChild(div);
+  });
+  if (stick) feed.scrollTop = feed.scrollHeight;
+}
+
+async function poll(){
+  try {
+    const r = await fetch('/state', {cache: 'no-store'});
+    S = await r.json();
+    document.getElementById('offline').style.display = 'none';
+    render();
+  } catch (err) {
+    document.getElementById('offline').style.display = 'block';
+    document.getElementById('dot').className = 'live off';
+  }
+  const wait = S ? Math.min(Math.max(S.seconds_per_tick / 2, 1), 10) : 3;
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, wait * 1000);
+}
+
+async function control(action, value){
+  try {
+    const r = await fetch('/control', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                       body: JSON.stringify({action, value})});
+    S = await r.json();
+    render();
+  } catch (err) { /* next poll recovers */ }
+}
+
+document.getElementById('pause').addEventListener('click', () => control(S && S.paused ? 'resume' : 'pause'));
+document.getElementById('speed').addEventListener('change', ev => control('speed', ev.target.value));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+poll();
+</script>
+</body>
+</html>

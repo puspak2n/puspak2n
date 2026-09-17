@@ -23,6 +23,7 @@ class Simulation:
         self.events = Log()
         self.ledger = Ledger()
         self.day = 0
+        self.tick = 0
         self.stopped = None
         self.events.add(0, 0, type="founded", village="Dekot", population=len(self.agents))
         self.ledger.open(self.agents)
@@ -41,30 +42,43 @@ class Simulation:
     # ---- main loop
     def run(self, until_day=None):
         stop = self.max_days if until_day is None else min(until_day, self.max_days)
-        while self.day < stop and self.stopped is None:
-            self.step_day()
+        while (self.day < stop or self.tick != 0) and self.stopped is None:
+            self.step_tick()
         if self.stopped is None and self.day >= self.max_days:
             self.stopped = "duration"
             self.events.add(self.day, 0, type="stopped", reason="duration", population=len(self.living()))
         return self
 
     def step_day(self):
-        cfg, day = self.cfg, self.day
-        for a in self.living():
-            a.reset_day()
-        self._assign_vacant_plots(day)
-        if day % cfg.days_per_year == 0 and day > 0:
-            contest_good_plot(self, day)
-            year_tick(self, day)
-        for tick in range(cfg.ticks_per_day):
+        self.step_tick()
+        while self.tick != 0 and self.stopped is None:
+            self.step_tick()
+
+    def step_tick(self):
+        """Advance one routine tick. Day boundaries (reset, plots, year events,
+        end-of-day biology) happen inside the first and last tick of the day,
+        so tick-paced and day-paced runs produce identical logs."""
+        if self.stopped is not None:
+            return
+        cfg, day, tick = self.cfg, self.day, self.tick
+        if tick == 0:
             for a in self.living():
-                self._act(a, day, tick)
+                a.reset_day()
+            self._assign_vacant_plots(day)
+            if day % cfg.days_per_year == 0 and day > 0:
+                contest_good_plot(self, day)
+                year_tick(self, day)
         for a in self.living():
-            self._end_of_day(a, day)
-        self.day += 1
-        if len(self.living()) < cfg.min_population:
-            self.stopped = "population"
-            self.events.add(self.day, 0, type="stopped", reason="population", population=len(self.living()))
+            self._act(a, day, tick)
+        self.tick += 1
+        if self.tick >= cfg.ticks_per_day:
+            for a in self.living():
+                self._end_of_day(a, day)
+            self.tick = 0
+            self.day += 1
+            if len(self.living()) < cfg.min_population:
+                self.stopped = "population"
+                self.events.add(self.day, 0, type="stopped", reason="population", population=len(self.living()))
 
     # ---- per-tick behaviour (rules only)
     def _act(self, a, day, tick):
