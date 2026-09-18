@@ -30,6 +30,7 @@ def save(sim: Simulation, path):
         "config": sim.cfg.to_dict(),
         "day": sim.day,
         "tick": sim.tick,
+        "weather": sim.weather,
         "stopped": sim.stopped,
         "rng": _rng_to_json(sim.rng.getstate()),
         "agents": [a.to_dict() for a in sim.agents],
@@ -57,6 +58,7 @@ def load(path, force=False) -> Simulation:
     sim.rng.setstate(_rng_from_json(d["rng"]))
     sim.day = d["day"]
     sim.tick = d.get("tick", 0)
+    sim.weather = d.get("weather", "clear")
     sim.stopped = d["stopped"]
     sim.agents = [Agent.from_dict(a) for a in d["agents"]]
     sim.world = World.from_dict(d["world"])

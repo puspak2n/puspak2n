@@ -140,6 +140,39 @@ def test_walking_produces_nothing():
                     for x in sim.ledger.entries[-60:])
 
 
+def test_village_life_variety():
+    sim = Simulation(Config(seed=7))
+    seen = set()
+    while sim.day < sim.max_days and sim.stopped is None:
+        sim.step_tick()
+        for a in sim.living():
+            seen.add(a.activity)
+    for act in ("farming", "walking", "sleeping", "eating", "celebrating", "playing"):
+        assert act in seen, act
+    assert seen & {"socialising", "praying", "resting"}  # evenings differ by temperament
+    kinds = {e["type"] for e in sim.events.entries}
+    assert "festival" in kinds
+    # rain falls sometimes across seeds (monsoon-weighted)
+    rains = sum(1 for e in sim.events.entries if e["type"] == "weather")
+    assert 0 < rains < sim.day
+
+
+def test_calibration_regression():
+    """The tuned village neither collapses nor becomes deathless.
+    Coarse bounds over a handful of long seeds; retune before loosening."""
+    births = child_deaths = 0
+    alive = []
+    for seed in range(1, 13):
+        sim = Simulation(Config(seed=seed, duration_years=20)).run()
+        births += sum(1 for e in sim.events.entries if e["type"] == "birth")
+        child_deaths += sum(1 for e in sim.events.entries
+                            if e["type"] == "death" and e["age"] < 14)
+        alive.append(len(sim.living()))
+    assert births >= 60, births
+    assert child_deaths / births < 0.45, (child_deaths, births)
+    assert sum(alive) / len(alive) >= 10, alive
+
+
 def test_recording_schema_and_determinism():
     import json
     from dekot.state import record, SCHEMA

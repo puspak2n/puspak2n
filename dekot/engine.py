@@ -9,7 +9,7 @@ from .health import daily_health_delta, p_death
 from .ledger import Ledger, OwnershipError
 from .log import Log
 from .relationships import Relationships
-from .world import make_world, assign_roles, owns, clear_site, GRAZE
+from .world import make_world, assign_roles, owns, clear_site, GRAZE, BANYAN, GHAT, SHRINE
 
 
 class Simulation:
@@ -24,6 +24,7 @@ class Simulation:
         self.ledger = Ledger()
         self.day = 0
         self.tick = 0
+        self.weather = "clear"
         self.stopped = None
         self.events.add(0, 0, type="founded", village="Dekot", population=len(self.agents))
         self.ledger.open(self.agents)
@@ -64,13 +65,19 @@ class Simulation:
         if tick == 0:
             for a in self.living():
                 a.reset_day()
+            self.weather = "rain" if self.rng.random() < cfg.rain_prob[day % cfg.days_per_year] else "clear"
+            if self.weather == "rain":
+                self.events.add(day, 0, type="weather", kind="rain")
             self._assign_vacant_plots(day)
             if day % cfg.days_per_year == 0 and day > 0:
                 contest_good_plot(self, day)
                 year_tick(self, day)
                 self._clear_new_land(day)
+                self.events.add(day, 0, type="festival")
         for a in self.living():
             self._act(a, day, tick)
+        if tick == cfg.ticks_per_day - 1:
+            self._evening_company(day, tick)
         self.tick += 1
         if self.tick >= cfg.ticks_per_day:
             for a in self.living():
@@ -97,14 +104,51 @@ class Simulation:
             a.activity = "eating"  # meals happen wherever they are, home or field
             self._eat(a, day, tick)
             return
+        festival = day % cfg.days_per_year == 0 and day > 0
+        evening = tick == cfg.ticks_per_day - 1
+        if festival and tick >= 7:
+            self._go(a, list(BANYAN), "celebrating")  # afternoon and evening at the banyan
+            return
+        if self.weather == "rain" and tick in (5, 6):
+            self._go(a, a.home, "sheltering")  # monsoon morning: wait it out at home
+            return
+        if evening:
+            self._evening(a)
+            return
         if a.role == "child":
-            a.activity = "playing"  # children stay near home; they neither work nor tire
+            self._child_day(a, day, tick)
             return
         dest = self._workplace(a)
         if a.pos != dest:
             self._walk(a, dest)  # a walking tick produces nothing
             return
         self._work(a, day, tick)
+
+    def _go(self, a, dest, activity):
+        if a.pos != dest:
+            self._walk(a, dest)
+        else:
+            a.activity = activity
+
+    def _evening(self, a):
+        """The last tick of the day is the village's own time, by temperament."""
+        if a.traits["piety"] >= self.cfg.piety_min:
+            self._go(a, list(SHRINE), "praying")
+        elif a.traits["sociability"] >= self.cfg.social_min:
+            self._go(a, list(BANYAN), "socialising")
+        else:
+            self._go(a, a.home, "resting")
+            if a.pos == a.home:
+                a.fatigue = max(a.fatigue - 3, 0)
+
+    def _child_day(self, a, day, tick):
+        """Children fetch water in the morning once old enough, then play —
+        near home or under the banyan, depending on the day."""
+        if a.age >= 7 and tick in (5, 6):
+            self._go(a, list(GHAT), "fetching_water")
+            return
+        spot = list(BANYAN) if (day + int(a.id[1:])) % 2 == 0 else a.home
+        self._go(a, spot, "playing")
 
     def _workplace(self, a):
         if a.role == "cowherd":
@@ -148,6 +192,11 @@ class Simulation:
         if a.inventory["milk"] >= 1.0:
             self.ledger.apply(day, tick, a, "milk", -1.0, "drink", "meal")
             a.milk_drunk += 1.0
+        # the festival meal is a feast for those who can afford it
+        if (day % cfg.days_per_year == 0 and day > 0 and tick == cfg.meal_ticks[-1]
+                and a.inventory["rice"] >= cfg.feast_rice):
+            self.ledger.apply(day, tick, a, "rice", -cfg.feast_rice, "eat", "feast")
+            a.mood = min(a.mood + 5, 100)
 
     def _ask_for_food(self, a, day, tick, need=None):
         cfg = self.cfg
@@ -183,6 +232,7 @@ class Simulation:
     def _work(self, a, day, tick):
         cfg = self.cfg
         effort = 0.5 + 0.5 * (a.health / 100) * (1 - a.fatigue / 200)
+        effort *= cfg.season_yield[day % cfg.days_per_year]  # sowing is lean, harvest rich
         a.work_ticks += 1
         a.fatigue = min(a.fatigue + 3, 100)
         if a.role == "farmer":
@@ -205,6 +255,14 @@ class Simulation:
                 buyer = max(farmers, key=lambda f: (f.inventory["rice"], f.id))
                 self.ledger.transfer(day, tick, a, buyer, "milk", 1.0, "trade")
                 self.ledger.transfer(day, tick, buyer, a, "rice", 1.0, "trade")
+
+    def _evening_company(self, day, tick):
+        """Company at the banyan warms relationships; festival evenings double it."""
+        there = sorted((a for a in self.living() if a.pos == list(BANYAN)
+                        and a.activity in ("socialising", "celebrating")), key=lambda x: x.id)
+        amount = 2 if any(a.activity == "celebrating" for a in there) else 1
+        for i in range(len(there) - 1):
+            self.rel.shift(there[i].id, there[i + 1].id, amount)
 
     def _clear_new_land(self, day):
         """Once a year, each landless farmer clears a fresh plot while land remains."""

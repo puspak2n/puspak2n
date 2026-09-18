@@ -17,12 +17,20 @@ class Config:
     # world
     n_plots: int = 6
     max_plots: int = 12               # landless farmers clear new land up to this
-    cleared_plot_fertility: float = 0.7  # fresh-cleared land yields less than old paddy
-    plot_fertility: float = 1.0      # rice per work tick, ordinary plot
-    good_plot_fertility: float = 1.75  # rice per work tick, the good plot
+    cleared_plot_fertility: float = 1.05  # fresh-cleared land yields less than old paddy
+    plot_fertility: float = 1.5      # rice per work tick, ordinary plot
+    good_plot_fertility: float = 2.6  # rice per work tick, the good plot
     herd_size: int = 4
-    forage_yield: float = 0.5         # rice per work tick for landless farmers
-    milk_per_cow_tick: float = 0.28
+    forage_yield: float = 0.75         # rice per work tick for landless farmers
+    milk_per_cow_tick: float = 0.4
+    # seasons and weather (year = days_per_year days; index = day % days_per_year)
+    # sowing -> growing -> harvest; multipliers average 1.0 so annual output is calibrated
+    season_yield: tuple = (0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.9, 1.6)
+    rain_prob: tuple = (0.6, 0.6, 0.5, 0.25, 0.15, 0.1, 0.05, 0.05)  # monsoon early in the year
+    # village life
+    social_min: int = 50              # sociability needed to spend the evening at the banyan
+    piety_min: int = 65               # piety that sends someone to the shrine instead
+    feast_rice: float = 0.5           # extra rice eaten at the festival meal, if held
     # movement (a tick spent walking produces nothing)
     move_speed: int = 4               # tiles per tick
     walk_fatigue: float = 1.0         # fatigue per walking tick

@@ -24,6 +24,8 @@ CLEAR_SITES = [(2, 11), (5, 11), (8, 11), (11, 11), (14, 11), (16, 11)]
 HOME_SITES = [(3, 8), (7, 8), (12, 8), (16, 8), (5, 9)]
 GRAZE = (8, 10)  # noqa: referenced by assign_roles below and the engine
 BANYAN = (9, 9)
+GHAT = (9, 2)    # steps down to the river: water is fetched here
+SHRINE = (17, 7)  # small shrine east of the houses
 
 
 @dataclass
@@ -52,7 +54,8 @@ class World:
         return {"plots": [asdict(p) for p in self.plots], "herd_size": self.herd_size,
                 "width": self.width, "height": self.height,
                 "terrain": TERRAIN, "homes": [list(h) for h in HOME_SITES],
-                "graze": list(GRAZE), "banyan": list(BANYAN)}
+                "graze": list(GRAZE), "banyan": list(BANYAN),
+                "ghat": list(GHAT), "shrine": list(SHRINE)}
 
     @classmethod
     def from_dict(cls, d):

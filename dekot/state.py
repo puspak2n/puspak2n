@@ -42,7 +42,7 @@ def frame(sim, tid, events):
 
 
 def meta(sim):
-    from .world import TERRAIN, GRAZE, BANYAN, HOME_SITES
+    from .world import TERRAIN, GRAZE, BANYAN, GHAT, SHRINE, HOME_SITES
     cfg = sim.cfg
     return {"schema": SCHEMA,
             "seed": cfg.seed, "founder_seed": cfg.founder_seed,
@@ -51,6 +51,7 @@ def meta(sim):
             "meal_ticks": list(cfg.meal_ticks),
             "terrain": TERRAIN, "homes": [list(h) for h in HOME_SITES],
             "graze": list(GRAZE), "banyan": list(BANYAN),
+            "ghat": list(GHAT), "shrine": list(SHRINE),
             "plots": [{"id": p.id, "x": p.x, "y": p.y, "fertility": p.fertility}
                       for p in sim.world.plots],
             "agents": [{"id": a.id, "name": a.name, "sex": a.sex,

@@ -24,7 +24,11 @@ const PAL={
 };
 // plot clearing times and plot tiles (engine truth)
 const clearedAt={};
-for(const f of FRAMES) for(const e of f.events) if(e.type==='plot_cleared') clearedAt[e.plot]=f.t;
+const rainDays=new Set();
+for(const f of FRAMES) for(const e of f.events){
+  if(e.type==='plot_cleared') clearedAt[e.plot]=f.t;
+  if(e.type==='weather') rainDays.add(Math.floor(f.t/TPD));
+}
 const plotTiles={}; META.plots.forEach(p=>plotTiles[p.x+','+p.y]=p);
 
 function diamond(cx,cy,fn){
@@ -141,7 +145,7 @@ for(const f of FRAMES) for(const e of f.events) if(e.type==='day_end'){
 }
 const FEED=[];
 for(const f of FRAMES) for(const e of f.events)
-  if(['founded','dispute','plot_claimed','plot_cleared','gift','refused_food','death','stopped','paired','birth','came_of_age'].includes(e.type))
+  if(['founded','dispute','plot_claimed','plot_cleared','gift','refused_food','death','stopped','paired','birth','came_of_age','festival'].includes(e.type))
     FEED.push([f.t,e]);
 
 // ---------- buildings ----------
@@ -194,6 +198,16 @@ function banyan(bx,by){
   }
   for(const rx of [-30,-12,20,42]){const len=7+((rx*7)%5+5)%5;for(let j=0;j<len;j++)px(bx+rx,by-16+j,'#5E482E');}
 }
+function shrine(bx,by){
+  g.fillStyle='rgba(20,16,8,0.25)';
+  g.beginPath();g.ellipse(bx+6,by+2,10,3,0,0,7);g.fill();
+  for(let j=0;j<8;j++)for(let i=0;i<12;i++){
+    const h=hash(bx+i,by+j);px(bx+i,by-6+j,h<.2?'#D8D2C2':'#EDE8DA');
+  }
+  for(let j=0;j<7;j++){const w=12-j;for(let i=0;i<w;i++)px(bx+(12-w)/2+i,by-13+j,j%2?'#C05B3B':'#D08A3E');}
+  px(bx+5,by-15,'#D08A3E');px(bx+6,by-15,'#D08A3E');px(bx+5,by-16,'#C05B3B');
+  g.fillStyle='#3A2A1C';g.fillRect(bx+4,by-3,4,5);
+}
 function actorDraw(img,cx,groundY,flip){
   g.fillStyle='rgba(20,16,8,0.30)';
   g.beginPath();g.ellipse(cx,groundY,img.width/4+2,3,0,0,7);g.fill();
@@ -234,6 +248,7 @@ function draw(){
   const items=[];
   META.homes.forEach((h,ix)=>items.push({d:h[1]+h[0]+0.4, f:()=>house(isoX(h[0],h[1])-21,isoY(h[0],h[1])-14,{thatch:ix%2===1,doorRight:ix%3===1,w:ix%2?36:42})}));
   items.push({d:META.banyan[1]+META.banyan[0]+0.4, f:()=>banyan(isoX(META.banyan[0],META.banyan[1])-4,isoY(META.banyan[0],META.banyan[1])-4)});
+  if(META.shrine) items.push({d:META.shrine[1]+META.shrine[0]+0.3, f:()=>shrine(isoX(META.shrine[0],META.shrine[1])-6,isoY(META.shrine[0],META.shrine[1])+6)});
   // ambient cows by the grazing land
   const [gc,gr]=META.graze;
   [[gc-2.6,gr+0.8,0],[gc+1.8,gr+1.1,1],[gc+4.6,gr+0.3,0]].forEach(([c,r,k],ix)=>{
@@ -245,8 +260,13 @@ function draw(){
     if(!a.alive) continue;
     const b=a1[a.id]&&a1[a.id].alive?a1[a.id]:a;
     // interpolate between consecutive ticks; a scrub jump moves both endpoints, so no sliding
-    const c=a.x+(b.x-a.x)*fr, r=a.y+(b.y-a.y)*fr;
-    if(a.act==='sleeping'){lastPos[a.id]=[c,r];continue;}  // indoors
+    let c=a.x+(b.x-a.x)*fr, r=a.y+(b.y-a.y)*fr;
+    // gatherings share a tile in the engine; spread people out to see the crowd
+    if(['socialising','celebrating','praying','playing','fetching_water','herding','foraging'].includes(a.act)&&a.act===((a1[a.id]||a).act)){
+      const hseed=parseInt(a.id.slice(1),10)+1;
+      c+=(hash(hseed,7)-0.5)*1.6; r+=(hash(7,hseed)-0.5)*1.2;
+    }
+    if(a.act==='sleeping'||a.act==='sheltering'||a.act==='resting'){lastPos[a.id]=[c,r];continue;}  // indoors
     const kit=KITS[a.id];
     const isChild=bornAt[a.id]!==undefined&&tid<bornAt[a.id]+ADULT_TICKS;
     let img;
@@ -267,6 +287,17 @@ function draw(){
   items.sort((p,q)=>p.d-q.d);
   for(const it of items) it.f();
 
+  const raining=rainDays.has(day)&&tick>=3;
+  if(raining){
+    g.fillStyle='rgba(70,84,104,0.20)';g.fillRect(0,0,WW,WH);
+    g.strokeStyle='rgba(200,214,232,0.35)';g.lineWidth=1;g.beginPath();
+    const off=Math.floor(F*22);
+    for(let k=0;k<130;k++){
+      const rx=(k*97+off*3)%WW, ry=((k*61)+off*7)%WH;
+      g.moveTo(rx,ry);g.lineTo(rx-2,ry+7);
+    }
+    g.stroke();
+  }
   if(overlay){g.fillStyle=overlay;g.fillRect(0,0,WW,WH);}
   if(glow>0.4){
     for(const d of doors){
@@ -307,6 +338,7 @@ function evLine(e){
     case 'paired': return n(e.a)+' and '+n(e.b)+' become a couple';
     case 'birth': return e.name+' is born to '+e.parents.map(n).join(' and ');
     case 'came_of_age': return n(e.agent)+' comes of age';
+    case 'festival': return 'festival day — the village gathers at the banyan';
     case 'stopped': return 'the run ends: '+e.reason;
   }
   return e.type;
