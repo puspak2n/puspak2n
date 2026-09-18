@@ -1,72 +1,70 @@
 <title>Dekot Alive</title>
 <style>
 :root{
-  --ground:#F6F4EA; --panel:#FDFCF5; --ink:#26281F; --muted:#77796A;
-  --line:#DDDACA; --accent:#527D2E; --alert:#A8452F;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --ground:#171912; --panel:#20231A; --ink:#E6E4D4; --muted:#9A9C8B;
-    --line:#34372A; --accent:#95C25F; --alert:#D9836B;
-  }
-}
-:root[data-theme="dark"]{
-  --ground:#171912; --panel:#20231A; --ink:#E6E4D4; --muted:#9A9C8B;
-  --line:#34372A; --accent:#95C25F; --alert:#D9836B;
+  --hud-bg:rgba(16,19,12,0.78); --hud-ink:#F2EFDF; --hud-mut:#B8B4A0;
+  --accent:#8FBF5C; --alert:#E08A6A; --line:rgba(255,255,255,0.14);
 }
 html,body{height:100%;}
 body{
-  background:var(--ground); color:var(--ink); margin:0;
+  margin:0; background:#23261C; color:var(--hud-ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  padding:0 16px; padding-block:8px 12px; max-width:900px; margin-inline:auto;
-  display:flex; flex-direction:column; gap:8px;
+  overflow:hidden;
 }
-.bar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-.bar h1{font-family:Georgia,serif; font-size:17px; margin:0;}
-.clock{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;}
-.spacer{flex:1;}
-button,select{
-  font:inherit; font-size:12.5px; padding:6px 11px; border-radius:6px;
-  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer;
-}
-button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
-.stage{
-  flex:1; min-height:380px; border:1px solid var(--line); border-radius:10px;
-  overflow:hidden; background:#23261C; touch-action:none; position:relative;
-}
+.stage{position:fixed; inset:0; touch-action:none;}
 canvas{width:100%; height:100%; display:block; image-rendering:pixelated; image-rendering:crisp-edges;}
+.hud{position:fixed; z-index:5; pointer-events:none;}
+.hud > *{pointer-events:auto;}
+.hud.tl{top:calc(10px + env(safe-area-inset-top,0px)); left:12px; display:flex; gap:8px; flex-wrap:wrap; max-width:70vw;}
+.hud.tr{top:calc(10px + env(safe-area-inset-top,0px)); right:12px; display:flex; gap:8px;}
+.chip{
+  background:var(--hud-bg); border:1px solid var(--line); border-radius:8px;
+  padding:6px 11px; font-size:13px; line-height:1.3; backdrop-filter:blur(3px);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.chip b{font-family:Georgia,serif; font-size:15px;}
+.chip .mut{color:var(--hud-mut);}
+button.chip, select.chip{font:inherit; font-size:13px; color:var(--hud-ink); cursor:pointer;}
+button.chip.primary{background:rgba(80,110,40,0.85); border-color:rgba(160,200,100,0.4);}
+.hud.bottom{
+  left:0; right:0; bottom:0; padding:0 12px calc(10px + env(safe-area-inset-bottom,0px));
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+}
+.toast{
+  background:var(--hud-bg); border:1px solid var(--line); border-radius:8px;
+  padding:7px 14px; font-size:13.5px; max-width:92vw; text-align:center;
+  transition:opacity .5s; backdrop-filter:blur(3px);
+}
+.toast.hot{border-color:rgba(224,138,106,0.5); color:var(--alert);}
+.toast.fade{opacity:0;}
+.scrubwrap{width:100%; max-width:900px; display:flex; align-items:center; gap:10px;}
+.scrubwrap input{flex:1; accent-color:var(--accent); min-width:0; height:26px;}
 .card{
-  position:absolute; left:10px; bottom:10px; max-width:270px;
-  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px;
-  padding:9px 11px; font-size:12.5px; line-height:1.5; box-shadow:0 3px 12px rgba(0,0,0,0.25);
+  position:fixed; z-index:6; left:12px; bottom:calc(86px + env(safe-area-inset-bottom,0px));
+  max-width:280px; background:var(--hud-bg); border:1px solid var(--line); border-radius:8px;
+  padding:9px 12px; font-size:13px; line-height:1.5; backdrop-filter:blur(3px);
 }
-.card b{font-size:14px;}
-.card .x{float:right; cursor:pointer; color:var(--muted); padding:0 3px;}
-.scrub{display:flex; align-items:center; gap:10px;}
-.scrub input{flex:1; accent-color:var(--accent); min-width:0; height:26px;}
-.ticker{
-  font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--muted);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:16px;
-}
-.ticker .hot{color:var(--alert);}
+.card b{font-size:15px; font-family:Georgia,serif;}
+.card .x{float:right; cursor:pointer; color:var(--hud-mut); padding:0 4px;}
 </style>
 
-<div class="bar">
-  <h1>Dekot</h1>
-  <span class="clock" id="clock">&nbsp;</span>
-  <span class="spacer"></span>
-  <button class="primary" id="play">&#9654;</button>
-  <select id="speed" aria-label="Playback speed">
-    <option value="3">1 day / 4s</option>
-    <option value="9" selected>1 day / 1.3s</option>
-    <option value="30">1 day / 0.4s</option>
+<div class="stage" id="stage"><canvas id="cv"></canvas></div>
+<div class="hud tl">
+  <span class="chip"><b>Dekot</b> <span class="mut" id="clock"></span></span>
+  <span class="chip" id="season"></span>
+  <span class="chip" id="pop"></span>
+</div>
+<div class="hud tr">
+  <button class="chip primary" id="play">&#10073;&#10073;</button>
+  <select class="chip" id="speed" aria-label="Playback speed">
+    <option value="3">Slow</option>
+    <option value="9" selected>Normal</option>
+    <option value="30">Fast</option>
   </select>
 </div>
-<div class="stage" id="stage">
-  <canvas id="cv"></canvas>
-  <div class="card" id="card" hidden></div>
+<div class="hud bottom">
+  <div class="toast fade" id="toast"></div>
+  <div class="scrubwrap"><input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Timeline"></div>
 </div>
-<div class="scrub"><input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Timeline"></div>
-<div class="ticker" id="ticker">A recorded 20-year run of the Dekot engine (seed 34). Play, scrub, pinch to zoom, tap a villager.</div>
+<div class="card" id="card" hidden></div>
 
 <script id="recdata" type="application/json">

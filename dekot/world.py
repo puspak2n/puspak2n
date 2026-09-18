@@ -22,6 +22,17 @@ WATER_ROWS = 2
 PLOT_SITES = [(6, 4), (2, 4), (11, 4), (15, 4), (2, 5), (12, 5)]   # plot 0 = the good plot
 CLEAR_SITES = [(2, 11), (5, 11), (8, 11), (11, 11), (14, 11), (16, 11)]
 HOME_SITES = [(3, 8), (7, 8), (12, 8), (16, 8), (5, 9)]
+EXPANSION_HOMES = [(2, 10), (12, 10), (15, 10), (17, 9)]  # new couples build here
+
+
+def free_home(agents, exclude_ids=()):
+    """First unoccupied home site, base sites before expansion ground."""
+    occupied = {tuple(x.home) for x in agents
+                if x.alive and x.home and x.id not in exclude_ids}
+    for site in HOME_SITES + EXPANSION_HOMES:
+        if site not in occupied:
+            return site
+    return None
 GRAZE = (8, 10)  # noqa: referenced by assign_roles below and the engine
 BANYAN = (9, 9)
 GHAT = (9, 2)    # steps down to the river: water is fetched here

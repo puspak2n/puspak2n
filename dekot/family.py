@@ -37,7 +37,16 @@ def _pair_singles(sim, day):
         if sim.rng.random() < cfg.pair_chance:
             singles.remove(match)
             a.partner, match.partner = match.id, a.id
-            match.home = list(a.home)  # the couple shares one house
+            # a new couple raises a house of their own if any ground is free;
+            # otherwise they move in together
+            from .world import free_home
+            site = free_home(sim.agents, exclude_ids=(a.id, match.id))
+            if site is not None:
+                a.home = list(site)
+                match.home = list(site)
+                sim.events.add(day, 0, type="house_built", site=list(site), a=a.id, b=match.id)
+            else:
+                match.home = list(a.home)
             sim.rel.shift(a.id, match.id, 30)
             sim.events.add(day, 0, type="paired", a=a.id, b=match.id)
 

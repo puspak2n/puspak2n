@@ -2,10 +2,9 @@
 <script>
 'use strict';
 const REC=JSON.parse(document.getElementById('recdata').textContent);
-const META=REC.meta, FRAMES=REC.frames, TPD=META.ticks_per_day;
+const META=REC.meta, FRAMES=REC.frames, TPD=META.ticks_per_day, DPY=META.days_per_year;
 const NAMES={}; META.agents.forEach(a=>NAMES[a.id]=a.name);
 
-// ---------- world canvas ----------
 const TW=32, TH=16, ROWSN=META.terrain.length, COLSN=META.terrain[0].length;
 const OX=ROWSN*TW/2, WW=(COLSN+ROWSN)*TW/2, WH=(COLSN+ROWSN)*TH/2+76, TOP=58;
 const world=document.createElement('canvas'); world.width=WW; world.height=WH;
@@ -17,46 +16,65 @@ const hash=(x,y)=>{let h=(x*374761393+y*668265263)^2654435761;h=(h^(h>>13))*1274
 const isoX=(c,r)=>OX+(c-r)*TW/2, isoY=(c,r)=>TOP+(c+r)*TH/2;
 function px(x,y,col){g.fillStyle=col;g.fillRect(x,y,1,1);}
 
-const PAL={
-  W:['#39698A','#4A7A9B','#7FAECB'], K:['#C4B285','#B3A276'],
-  P:['#527D5E','#8DBE5E','#75A64C'], Q:['#4E7A58','#A5CE6E','#8ABD54'],
-  T:['#C8AC74','#B89A60'], G:['#83A051','#79964A','#8DA85C'], D:['#B99A6B','#AD8F60']
-};
-// plot clearing times and plot tiles (engine truth)
-const clearedAt={};
-const rainDays=new Set();
+// ---------- indexes over the recording ----------
+const clearedAt={}, rainDays=new Set(), builtAt=[], bornAt={}, dayEnd={}, FEED=[];
 for(const f of FRAMES) for(const e of f.events){
   if(e.type==='plot_cleared') clearedAt[e.plot]=f.t;
-  if(e.type==='weather') rainDays.add(Math.floor(f.t/TPD));
+  else if(e.type==='weather') rainDays.add(Math.floor(f.t/TPD));
+  else if(e.type==='house_built') builtAt.push([f.t,e.site]);
+  else if(e.type==='birth') bornAt[e.child]=f.t;
+  else if(e.type==='day_end') (dayEnd[e.agent]=dayEnd[e.agent]||[]).push([f.t,e.health,e.rice,e.meals,e.age]);
+  if(['founded','dispute','plot_claimed','plot_cleared','gift','refused_food','death','stopped',
+      'paired','birth','came_of_age','festival','house_built'].includes(e.type)) FEED.push([f.t,e]);
 }
 const plotTiles={}; META.plots.forEach(p=>plotTiles[p.x+','+p.y]=p);
+const baseHomes=new Set(META.homes.map(h=>h[0]+','+h[1]));
+const ADULT_TICKS=14*DPY*TPD;
+const SEASONS=[['Sowing',0],['Sowing',0],['Sowing',0],['Growing',1],['Growing',1],['Growing',1],['Harvest',2],['Harvest',2]];
 
-function diamond(cx,cy,fn){
-  for(let dy=0;dy<TH;dy++){
-    const w=dy<TH/2?(dy+1)*4:(TH-dy)*4, x0=cx-w/2;
-    for(let dx=0;dx<w;dx++) fn(x0+dx,cy+dy,dx,dy);
-  }
-}
-function tileColor(k,x,y,dy,t){
-  const p=PAL[k];
+// ---------- ground ----------
+const PAL={
+  W:['#39698A','#4A7A9B','#7FAECB'], K:['#C4B285','#B3A276'],
+  T:['#C8AC74','#B89A60'], G:['#83A051','#79964A','#8DA85C'], D:['#B99A6B','#AD8F60']
+};
+// paddy through the year: wet sown mud -> young green -> deep green -> gold
+const CROP=[
+  {base:'#6E5F44', row:'#7A9A50', alt:'#6E8A46', rows:6},   // sowing: mud, sparse seedlings
+  {base:'#527D5E', row:'#8DBE5E', alt:'#75A64C', rows:4},   // growing: the familiar green
+  {base:'#8A7A46', row:'#D8BC55', alt:'#C9A845', rows:3},   // harvest: gold
+];
+function cropStage(day){return SEASONS[day%DPY][1];}
+function tileColor(k,x,y,dy,t,day,good){
   if(k==='W'){
-    let col=(hash(x>>3,y>>2)<.5)?p[0]:p[1];
-    if(y%5===2&&((x+Math.floor(t*10))%44)<7) col=p[2];
+    let col=(hash(x>>3,y>>2)<.5)?PAL.W[0]:PAL.W[1];
+    if(y%5===2&&((x+Math.floor(t*10))%44)<7) col=PAL.W[2];
     return col;
   }
-  if(k==='P'||k==='Q') return (dy%4===1||dy%4===2)?((x>>1)%2?p[1]:p[2]):p[0];
+  if(k==='P'||k==='Q'){
+    const c=CROP[cropStage(day)], step=good?Math.max(2,c.rows-1):c.rows;
+    if(dy%step===1||(good&&dy%step===2)) return (x>>1)%2?c.row:c.alt;
+    if(cropStage(day)===0&&hash(x,y)<.06) return c.row;         // scattered seedlings
+    return c.base;
+  }
+  const p=PAL[k]||PAL.G;
   if(k==='G'){ if(hash(x,y)>.985) return p[2]; return hash(x>>3,y>>3)<.4?p[1]:p[0]; }
   return hash(x>>2,y>>2)<.25?p[1]:p[0];
 }
 function drawGround(t,tid){
+  const day=Math.floor(tid/TPD);
   for(let r=0;r<ROWSN;r++)for(let c=0;c<COLSN;c++){
     let k=META.terrain[r][c]; if(k==='B') k='G';
-    // cleared plots become paddy once cleared
     const pl=plotTiles[c+','+r];
+    let good=k==='Q';
     if(pl&&k==='G'&&(clearedAt[pl.id]===undefined||clearedAt[pl.id]<=tid)) k='P';
-    if(pl&&k==='G') k='G';
     const cx=isoX(c,r),cy=isoY(c,r);
-    diamond(cx,cy,(x,y,dx,dy)=>px(x,y,tileColor(k,x,y,dy,t)));
+    for(let dy=0;dy<TH;dy++){
+      const w=dy<TH/2?(dy+1)*4:(TH-dy)*4, x0=cx-w/2;
+      for(let dx=0;dx<w;dx++){
+        const x=x0+dx,y=cy+dy;
+        px(x,y,tileColor(k==='Q'?'P':k,x,y,dy,t,day,good));
+      }
+    }
     if(k==='P'||k==='Q'){
       g.fillStyle='#8A7A4A';
       if(hash(c,r)<.7){g.fillRect(cx-2,cy,4,1);g.fillRect(cx+6,cy+2,3,1);}
@@ -64,7 +82,7 @@ function drawGround(t,tid){
   }
 }
 
-// ---------- sprites (approved Phase-0 style, pre-rendered 2x with outline) ----------
+// ---------- sprites ----------
 const SK='#9A6540',HR='#241B12',OUT='#221A10';
 function prerender(rows,pal){
   const h=rows.length,w=rows[0].length;
@@ -117,12 +135,18 @@ function womanSet(col,dark){
 const childImg=prerender([
 '...HHHH...','...SSSS...','...SSSS...','..CCCCCC..','..CCCCCC..',
 '..CC..CC..','..KK..KK..'],{H:HR,S:SK,C:'#D08A3E',K:'#7A4A2C'});
-const cowImgs=[prerender([
-'......WWWWWWWWWWWW.hh','....WWWWWWWWWWWWWWWhh','...WWWWbbWWWWWWWWhhhh','..WWWWWbbWWWWWWWWheeh','..WWWWWWWWWWWWWWWhhhh',
-'..WWWWWWWWWWWWWWW.hh.','...WW..WW....WW..WW..','...WW..WW....WW..WW..'],{W:'#EDE8DA',b:'#8A6242',h:'#D8D2C2',e:HR}),
-prerender([
-'......BBBBBBBBBBBB.hh','....BBBBBBBBBBBBBBBhh','...BBBBBBBBBBBBBBhhhh','..BBBBBBBBBBBBBBBheeh','..BBBBBBBBBBBBBBBhhhh',
-'..BBBBBBBBBBBBBBB.hh.','...BB..BB....BB..BB..','...BB..BB....BB..BB..'],{B:'#7A5638',h:'#A88A66',e:HR})];
+function cowPair(body,shade){
+  const up=prerender([
+  '......BBBBBBBBBBBB.hh','....BBBBBBBBBBBBBBBhh','...BBBBbbBBBBBBBBhhhh','..BBBBBbbBBBBBBBBheeh','..BBBBBBBBBBBBBBBhhhh',
+  '..BBBBBBBBBBBBBBB.hh.','...BB..BB....BB..BB..','...BB..BB....BB..BB..'],{B:body,b:shade,h:'#D8D2C2',e:HR});
+  const down=prerender([
+  '......BBBBBBBBBBBB...','....BBBBBBBBBBBBBBB..','...BBBBbbBBBBBBBBBB..','..BBBBBbbBBBBBBBBhh..','..BBBBBBBBBBBBBBBhhh.',
+  '..BBBBBBBBBBBBBBBheeh','...BB..BB....BB..hhh.','...BB..BB....BB......'],{B:body,b:shade,h:'#D8D2C2',e:HR});
+  return [up,down];
+}
+const cows=[cowPair('#EDE8DA','#8A6242'),cowPair('#7A5638','#5E4228'),cowPair('#D8CDB8','#6E5138')];
+const henImg=prerender([
+'..RR..','.WWWW.','WWWWWW','.WWWW.','..Y...'],{R:'#C0392B',W:'#EDE8DA',Y:'#D8A020'});
 
 const MAN_KITS=[['#D08A3E','#EDE8DA'],['#B04A3A','#EDE8DA'],['#5A7A9A','#E4DDC8'],['#6E8A3A','#EDE8DA'],['#8A5A9A','#E4DDC8'],['#3A8A7A','#EDE8DA']];
 const WOMAN_KITS=[['#B03A60','#842B48'],['#2E7A72','#215B55'],['#C9803A','#96601E'],['#6A4A9A','#4E3372'],['#3A6AA0','#2A4E78'],['#A83A3A','#7E2B2B']];
@@ -133,20 +157,6 @@ const KITS={};
                           :manSet(...MAN_KITS[mi++%MAN_KITS.length]);
   });
 }
-// child-until tick per agent (born agents only)
-const bornAt={};
-for(const f of FRAMES) for(const e of f.events) if(e.type==='birth') bornAt[e.child]=f.t;
-const ADULT_TICKS=14*META.days_per_year*TPD;
-
-// health/day-end history for the tap card
-const dayEnd={};
-for(const f of FRAMES) for(const e of f.events) if(e.type==='day_end'){
-  (dayEnd[e.agent]=dayEnd[e.agent]||[]).push([f.t,e.health,e.rice,e.meals,e.age]);
-}
-const FEED=[];
-for(const f of FRAMES) for(const e of f.events)
-  if(['founded','dispute','plot_claimed','plot_cleared','gift','refused_food','death','stopped','paired','birth','came_of_age','festival'].includes(e.type))
-    FEED.push([f.t,e]);
 
 // ---------- buildings ----------
 let nightGlow=0; const doors=[];
@@ -216,16 +226,12 @@ function actorDraw(img,cx,groundY,flip){
 }
 
 // ---------- playback ----------
-let F=0;                      // fractional frame index
-let playing=false, speed=9;   // ticks per second
+let F=0, playing=false, speed=9;
 const scrub=document.getElementById('scrub');
 scrub.max=FRAMES.length-1;
-const lastPos={};             // id -> [c,r] rendered last frame (for flip direction)
-const hit=[];                 // tap targets
-
+const lastPos={}, hit=[];
 function frameAt(i){return FRAMES[Math.max(0,Math.min(FRAMES.length-1,i))];}
 function lightFor(tick){
-  // returns [overlay rgba string or null, nightGlow 0..1]
   if(tick<3) return ['rgba(10,18,44,0.52)',1];
   if(tick===3) return ['rgba(30,30,60,0.30)',0.6];
   if(tick===4) return ['rgba(255,190,120,0.12)',0];
@@ -235,7 +241,7 @@ function lightFor(tick){
 }
 
 function draw(){
-  const i0=Math.floor(F), i1=Math.min(i0+1, FRAMES.length-1), fr=F-i0;
+  const i0=Math.floor(F), i1=Math.min(i0+1,FRAMES.length-1), fr=F-i0;
   const f0=frameAt(i0), f1=frameAt(i1);
   const tid=f0.t, tick=tid%TPD, day=Math.floor(tid/TPD);
   const [overlay,glow]=lightFor(tick);
@@ -247,26 +253,47 @@ function draw(){
 
   const items=[];
   META.homes.forEach((h,ix)=>items.push({d:h[1]+h[0]+0.4, f:()=>house(isoX(h[0],h[1])-21,isoY(h[0],h[1])-14,{thatch:ix%2===1,doorRight:ix%3===1,w:ix%2?36:42})}));
+  const drawn=new Set(META.homes.map(h=>h[0]+','+h[1]));
+  builtAt.forEach(([bt,site],ix)=>{
+    const key=site[0]+','+site[1];
+    if(bt<=tid&&!drawn.has(key)){
+      drawn.add(key);
+      items.push({d:site[1]+site[0]+0.4, f:()=>house(isoX(site[0],site[1])-19,isoY(site[0],site[1])-14,{thatch:true,w:36,doorRight:ix%2===0})});
+    }
+  });
   items.push({d:META.banyan[1]+META.banyan[0]+0.4, f:()=>banyan(isoX(META.banyan[0],META.banyan[1])-4,isoY(META.banyan[0],META.banyan[1])-4)});
   if(META.shrine) items.push({d:META.shrine[1]+META.shrine[0]+0.3, f:()=>shrine(isoX(META.shrine[0],META.shrine[1])-6,isoY(META.shrine[0],META.shrine[1])+6)});
-  // ambient cows by the grazing land
+
+  // cows wander the grazing common, heads mostly down; hens peck in the courtyard
   const [gc,gr]=META.graze;
-  [[gc-2.6,gr+0.8,0],[gc+1.8,gr+1.1,1],[gc+4.6,gr+0.3,0]].forEach(([c,r,k],ix)=>{
-    items.push({d:r+c, f:()=>actorDraw(cowImgs[k],isoX(c,r),isoY(c,r)+TH/2,ix===1)});
-  });
+  for(let k=0;k<3;k++){
+    const ph=F*0.006+k*2.1;
+    const c=gc-1+k*1.9+Math.sin(ph)*1.1;
+    const r=gr+0.7+Math.cos(ph*0.8+k)*0.45;
+    const headDown=Math.floor(F*0.03+k)%3!==0;
+    const flip=Math.cos(ph)<0;
+    items.push({d:r+c, f:()=>actorDraw(cows[k][headDown?1:0],isoX(c,r),isoY(c,r)+TH/2,flip)});
+  }
+  for(let k=0;k<3;k++){
+    const hc=5.2+k*1.3+Math.sin(F*0.05+k*3)*0.4, hr=8.6+Math.cos(F*0.04+k*2)*0.4;
+    const hop=Math.floor(F*0.6+k)%7===0?-2:0;
+    items.push({d:hr+hc, f:()=>{
+      const x=isoX(hc,hr), y=isoY(hc,hr)+TH/2;
+      g.fillStyle='rgba(20,16,8,0.25)';g.beginPath();g.ellipse(x,y,4,2,0,0,7);g.fill();
+      g.drawImage(henImg,x-henImg.width/2,y-henImg.height+2+hop);
+    }});
+  }
 
   const a1={}; f1.agents.forEach(a=>a1[a.id]=a);
   for(const a of f0.agents){
     if(!a.alive) continue;
     const b=a1[a.id]&&a1[a.id].alive?a1[a.id]:a;
-    // interpolate between consecutive ticks; a scrub jump moves both endpoints, so no sliding
     let c=a.x+(b.x-a.x)*fr, r=a.y+(b.y-a.y)*fr;
-    // gatherings share a tile in the engine; spread people out to see the crowd
     if(['socialising','celebrating','praying','playing','fetching_water','herding','foraging'].includes(a.act)&&a.act===((a1[a.id]||a).act)){
-      const hseed=parseInt(a.id.slice(1),10)+1;
-      c+=(hash(hseed,7)-0.5)*1.6; r+=(hash(7,hseed)-0.5)*1.2;
+      const hs=parseInt(a.id.slice(1),10)+1;
+      c+=(hash(hs,7)-0.5)*1.6; r+=(hash(7,hs)-0.5)*1.2;
     }
-    if(a.act==='sleeping'||a.act==='sheltering'||a.act==='resting'){lastPos[a.id]=[c,r];continue;}  // indoors
+    if(a.act==='sleeping'||a.act==='sheltering'||a.act==='resting'){lastPos[a.id]=[c,r];continue;}
     const kit=KITS[a.id];
     const isChild=bornAt[a.id]!==undefined&&tid<bornAt[a.id]+ADULT_TICKS;
     let img;
@@ -277,7 +304,6 @@ function draw(){
     const lp=lastPos[a.id]||[c,r];
     const flip=(c-lp[0])<-0.01||(a.dx!==null&&a.dx<a.x);
     lastPos[a.id]=[c,r];
-    const name=NAMES[a.id]||a.id;
     items.push({d:r+c, f:()=>{
       const x=isoX(c,r), y=isoY(c,r)+TH/2;
       actorDraw(img,x,y,flip);
@@ -316,41 +342,50 @@ function draw(){
     }
   }
 
-  const year=Math.floor(day/META.days_per_year)+1;
-  document.getElementById('clock').textContent=
-    'day '+day+' · tick '+tick+' · year '+year+' of '+META.duration_years;
+  const year=Math.floor(day/DPY)+1;
+  document.getElementById('clock').textContent='year '+year+' · day '+(day%DPY+1)+' · '+
+    (tick<3?'night':tick<5?'morning':tick<9?'midday':'evening');
+  document.getElementById('season').textContent=SEASONS[day%DPY][0]+(raining?' · rain':'');
+  document.getElementById('pop').textContent=f0.agents.filter(a=>a.alive).length+' villagers';
   scrub.value=i0;
-  updateTicker(tid);
+  updateToast(tid);
   updateCard(tid);
 }
 
-let tickerAt=-1;
+// ---------- toast ----------
+let toastAt=-1, toastShownAt=0;
 function evLine(e){
   const n=id=>NAMES[id]||id;
   switch(e.type){
-    case 'founded': return 'Dekot founded with '+e.population+' villagers';
-    case 'dispute': return n(e.challenger)+' challenges '+n(e.holder)+' for the good plot — '+(e.outcome==='challenger_wins'?n(e.challenger)+' wins':n(e.holder)+' holds');
+    case 'founded': return 'Dekot is founded — '+e.population+' villagers by the river';
+    case 'dispute': return n(e.challenger)+' challenges '+n(e.holder)+' for the good plot — '+(e.outcome==='challenger_wins'?n(e.challenger)+' takes it':n(e.holder)+' holds');
     case 'plot_claimed': return n(e.agent)+' claims the vacant good plot';
-    case 'plot_cleared': return n(e.agent)+' clears new land';
-    case 'gift': return n(e.giver)+' gives rice to hungry '+n(e.taker);
-    case 'refused_food': return n(e.asked)+' refuses food to '+n(e.agent);
+    case 'plot_cleared': return n(e.agent)+' clears new farmland';
+    case 'gift': return n(e.giver)+' shares rice with hungry '+n(e.taker);
+    case 'refused_food': return n(e.asked)+' turns '+n(e.agent)+' away hungry';
     case 'death': return n(e.agent)+' dies of '+e.cause+', aged '+Math.round(e.age);
-    case 'paired': return n(e.a)+' and '+n(e.b)+' become a couple';
+    case 'paired': return n(e.a)+' and '+n(e.b)+' marry';
+    case 'house_built': return n(e.a)+' and '+n(e.b)+' build a house of their own';
     case 'birth': return e.name+' is born to '+e.parents.map(n).join(' and ');
-    case 'came_of_age': return n(e.agent)+' comes of age';
-    case 'festival': return 'festival day — the village gathers at the banyan';
-    case 'stopped': return 'the run ends: '+e.reason;
+    case 'came_of_age': return n(e.agent)+' comes of age and takes up farming';
+    case 'festival': return 'Festival day — the village gathers under the banyan';
+    case 'stopped': return 'Twenty years have passed in Dekot';
   }
   return e.type;
 }
-function updateTicker(tid){
+function updateToast(tid){
   let last=null;
   for(const [t,e] of FEED){ if(t<=tid) last=[t,e]; else break; }
-  if(!last||last[0]===tickerAt) return;
-  tickerAt=last[0];
-  const e=last[1], day=Math.floor(last[0]/TPD);
-  const el=document.getElementById('ticker');
-  el.innerHTML='<span class="'+(e.type==='death'?'hot':'')+'">d'+day+' &middot; '+evLine(e)+'</span>';
+  const el=document.getElementById('toast');
+  if(!last){el.classList.add('fade');return;}
+  if(last[0]!==toastAt){
+    toastAt=last[0]; toastShownAt=F;
+    el.textContent=evLine(last[1]);
+    el.classList.toggle('hot',last[1].type==='death');
+    el.classList.remove('fade');
+  } else if(F-toastShownAt>TPD*2.5){
+    el.classList.add('fade');
+  }
 }
 
 // ---------- tap card ----------
@@ -365,21 +400,19 @@ function updateCard(tid){
   const fa=frameAt(Math.floor(F)).agents.find(a=>a.id===selId);
   let html='<span class="x" id="cx">&times;</span><b>'+m.name+'</b><br>';
   if(fa&&fa.alive){
-    html+=(fa.act||'')+(snap?(' · hp '+snap[1]+' · rice '+snap[2]+' · age '+Math.round(snap[4])):'');
-  }else{
-    html+='no longer living';
-  }
+    html+=(fa.act||'').replace('_',' ')+(snap?(' · health '+Math.round(snap[1])+' · rice '+snap[2]+' · age '+Math.round(snap[4])):'');
+  }else html+='no longer living';
   if(m.parents) html+='<br>child of '+m.parents.map(id=>NAMES[id]||id).join(' & ');
   card.innerHTML=html; card.hidden=false;
   document.getElementById('cx').onclick=()=>{selId=null;card.hidden=true;};
 }
 
-// ---------- view: pan / pinch / tap ----------
+// ---------- view ----------
 const view={x:0,y:0,s:1.8};
 function fitView(){
   const r=stage.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,3);
   cv.width=r.width*dpr; cv.height=r.height*dpr;
-  view.s=Math.max(cv.width/WW,cv.height/WH)*1.12;
+  view.s=Math.max(cv.width/WW,cv.height/WH)*1.22;
   const cxw=isoX(8.5,7.5), cyw=isoY(8.5,7.5);
   view.x=cv.width/2-cxw*view.s; view.y=cv.height/2-cyw*view.s;
 }
@@ -397,7 +430,6 @@ function present(){
 }
 const ptrs=new Map(); let lastPinch=null, downAt=null;
 stage.addEventListener('pointerdown',e=>{
-  if(e.target.closest('.card')) return;
   stage.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId,[e.clientX,e.clientY]);
   if(ptrs.size===1) downAt=[e.clientX,e.clientY];
@@ -470,7 +502,6 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 addEventListener('resize',fitView);
-// deep-link into a moment: #t=<tick_id>
 {const m=location.hash.match(/t=(\d+)/); if(m) F=Math.min(+m[1],FRAMES.length-1);}
 fitView(); draw(); setPlaying(true); requestAnimationFrame(loop);
 </script>
