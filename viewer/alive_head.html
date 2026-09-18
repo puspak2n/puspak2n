@@ -1,0 +1,72 @@
+<title>Dekot Alive</title>
+<style>
+:root{
+  --ground:#F6F4EA; --panel:#FDFCF5; --ink:#26281F; --muted:#77796A;
+  --line:#DDDACA; --accent:#527D2E; --alert:#A8452F;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#171912; --panel:#20231A; --ink:#E6E4D4; --muted:#9A9C8B;
+    --line:#34372A; --accent:#95C25F; --alert:#D9836B;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#171912; --panel:#20231A; --ink:#E6E4D4; --muted:#9A9C8B;
+  --line:#34372A; --accent:#95C25F; --alert:#D9836B;
+}
+html,body{height:100%;}
+body{
+  background:var(--ground); color:var(--ink); margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:0 16px; padding-block:8px 12px; max-width:900px; margin-inline:auto;
+  display:flex; flex-direction:column; gap:8px;
+}
+.bar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.bar h1{font-family:Georgia,serif; font-size:17px; margin:0;}
+.clock{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;}
+.spacer{flex:1;}
+button,select{
+  font:inherit; font-size:12.5px; padding:6px 11px; border-radius:6px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer;
+}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+.stage{
+  flex:1; min-height:380px; border:1px solid var(--line); border-radius:10px;
+  overflow:hidden; background:#23261C; touch-action:none; position:relative;
+}
+canvas{width:100%; height:100%; display:block; image-rendering:pixelated; image-rendering:crisp-edges;}
+.card{
+  position:absolute; left:10px; bottom:10px; max-width:270px;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+  padding:9px 11px; font-size:12.5px; line-height:1.5; box-shadow:0 3px 12px rgba(0,0,0,0.25);
+}
+.card b{font-size:14px;}
+.card .x{float:right; cursor:pointer; color:var(--muted); padding:0 3px;}
+.scrub{display:flex; align-items:center; gap:10px;}
+.scrub input{flex:1; accent-color:var(--accent); min-width:0; height:26px;}
+.ticker{
+  font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:16px;
+}
+.ticker .hot{color:var(--alert);}
+</style>
+
+<div class="bar">
+  <h1>Dekot</h1>
+  <span class="clock" id="clock">&nbsp;</span>
+  <span class="spacer"></span>
+  <button class="primary" id="play">&#9654;</button>
+  <select id="speed" aria-label="Playback speed">
+    <option value="3">1 day / 4s</option>
+    <option value="9" selected>1 day / 1.3s</option>
+    <option value="30">1 day / 0.4s</option>
+  </select>
+</div>
+<div class="stage" id="stage">
+  <canvas id="cv"></canvas>
+  <div class="card" id="card" hidden></div>
+</div>
+<div class="scrub"><input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Timeline"></div>
+<div class="ticker" id="ticker">A recorded 20-year run of the Dekot engine (seed 34). Play, scrub, pinch to zoom, tap a villager.</div>
+
+<script id="recdata" type="application/json">
