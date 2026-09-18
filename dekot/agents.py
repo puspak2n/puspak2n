@@ -22,6 +22,7 @@ class Agent:
     # space (SPEC map tiles): where they are, where they live, what they're doing
     pos: list | None = None
     home: list | None = None
+    dest: list | None = None   # where they're walking to; None when stationary
     activity: str = "idle"
     inventory: dict = field(default_factory=lambda: {"rice": 4.0, "milk": 0.0})
     # per-day routine tallies, reset at day start

@@ -29,6 +29,7 @@ def main(argv=None):
     r = sub.add_parser("run"); r.add_argument("--seed", type=int, default=1); r.add_argument("--out", default="runs/run"); r.add_argument("--save-at", type=int); r.add_argument("--quiet", action="store_true")
     s = sub.add_parser("resume"); s.add_argument("state"); s.add_argument("--out", default="runs/resumed"); s.add_argument("--force", action="store_true")
     e = sub.add_parser("experiment"); e.add_argument("--runs", type=int, default=100); e.add_argument("--out", default="runs/experiment.json")
+    c = sub.add_parser("record"); c.add_argument("--seed", type=int, default=1); c.add_argument("--years", type=int); c.add_argument("--out", default="runs/recording.json")
     v = sub.add_parser("serve"); v.add_argument("--seed", type=int, default=1); v.add_argument("--state", default="runs/live/state.json"); v.add_argument("--host", default="0.0.0.0"); v.add_argument("--port", type=int, default=8080); v.add_argument("--force", action="store_true")
     a = p.parse_args(argv)
     if a.cmd == "run":
@@ -45,6 +46,17 @@ def main(argv=None):
     elif a.cmd == "resume":
         sim = load(a.state, force=a.force); sim.run(); write_run(sim, a.out)
         print(f"stopped={sim.stopped} days={sim.day} alive={len(sim.living())} -> {a.out}", file=sys.stderr)
+    elif a.cmd == "record":
+        from dataclasses import replace
+        from .state import record
+        cfg = Config(seed=a.seed)
+        if a.years:
+            cfg = replace(cfg, duration_years=a.years)
+        rec = record(cfg)
+        os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+        with open(a.out, "w") as f:
+            json.dump(rec, f, separators=(",", ":"))
+        print(f"recorded {len(rec['frames'])} ticks over {rec['n_days']} days -> {a.out}", file=sys.stderr)
     elif a.cmd == "serve":
         from .server import serve
         serve(Config(seed=a.seed), a.state, host=a.host, port=a.port, force=a.force)

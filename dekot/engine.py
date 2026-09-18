@@ -84,6 +84,7 @@ class Simulation:
     # ---- per-tick behaviour (rules only)
     def _act(self, a, day, tick):
         cfg = self.cfg
+        a.dest = None  # set again below if this tick is spent walking
         if is_night(tick, cfg):
             if a.pos != a.home:
                 self._walk(a, a.home)  # caught out at dusk: walk home, losing rest
@@ -115,6 +116,7 @@ class Simulation:
 
     def _walk(self, a, dest):
         a.activity = "walking"
+        a.dest = list(dest)
         for _ in range(self.cfg.move_speed):
             dx, dy = dest[0] - a.pos[0], dest[1] - a.pos[1]
             if dx == 0 and dy == 0:

@@ -18,6 +18,7 @@ from .config import Config
 from .engine import Simulation
 from .fingerprint import engine_fingerprint
 from .persistence import save, load
+from .state import SCHEMA, frame, last_tick_id, meta
 
 FEED_TYPES = ("founded", "dispute", "plot_claimed", "plot_assigned", "gift",
               "refused_food", "hungry", "death", "stopped", "paired", "birth", "came_of_age")
@@ -99,7 +100,10 @@ class LiveVillage:
             self._save_control()
             return self.snapshot()
 
-    def snapshot(self):
+    def snapshot(self, since=None):
+        """Live state. `frame` and `meta` use the shared tick-level schema
+        (dekot/state.py) — identical shape to a recording's frames — plus
+        control/UI extras. `since` (a tick_id) bounds the recap feed."""
         sim = self.sim
         agents = []
         for a in sim.agents:
@@ -109,7 +113,18 @@ class LiveVillage:
                            "rice": round(a.inventory["rice"], 2), "milk": round(a.inventory["milk"], 2),
                            "meals": a.meals_eaten, "parents": a.parents, "partner": a.partner})
         speed = next((k for k, v in SPEEDS.items() if v == self.seconds_per_day), "custom")
-        return {"day": sim.day, "tick": sim.tick, "stopped": sim.stopped,
+        tid = last_tick_id(sim)
+        if since is not None:
+            tpd = sim.cfg.ticks_per_day
+            recap = [e for e in sim.events.entries if e["type"] in FEED_TYPES
+                     and e["day"] * tpd + e["tick"] > since][-200:]
+        else:
+            recap = None
+        return {"schema": SCHEMA, "tick_id": tid,
+                "frame": frame(sim, tid, []) if tid >= 0 else None,
+                "meta": meta(sim),
+                "recap": recap,
+                "day": sim.day, "tick": sim.tick, "stopped": sim.stopped,
                 "paused": self.paused, "speed": speed, "speeds": list(SPEEDS),
                 "seconds_per_tick": self.seconds_per_tick(),
                 "max_days": sim.max_days, "days_per_year": sim.cfg.days_per_year,
@@ -142,8 +157,14 @@ def make_handler(village: LiveVillage, page_html: bytes):
                 self.end_headers()
                 self.wfile.write(page_html)
             elif self.path.startswith("/state"):
+                since = None
+                if "since=" in self.path:
+                    try:
+                        since = int(self.path.split("since=")[1].split("&")[0])
+                    except ValueError:
+                        pass
                 with village.lock:
-                    self._json(village.snapshot())
+                    self._json(village.snapshot(since=since))
             else:
                 self._json({"error": "not found"}, 404)
 

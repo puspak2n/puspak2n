@@ -140,6 +140,47 @@ def test_walking_produces_nothing():
                     for x in sim.ledger.entries[-60:])
 
 
+def test_recording_schema_and_determinism():
+    import json
+    from dekot.state import record, SCHEMA
+    a = record(Config(seed=5))
+    b = record(Config(seed=5))
+    assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+    assert a["schema"] == SCHEMA
+    tids = [f["t"] for f in a["frames"]]
+    assert tids == list(range(len(tids)))  # monotonic, contiguous from 0
+    # every event lands in exactly one frame, in order
+    ev = [e for f in a["frames"] for e in f["events"]]
+    sim = Simulation(Config(seed=5)).run()
+    assert ev == sim.events.entries
+    # frames carry the same positions the engine had
+    last = a["frames"][-1]
+    by = {x["id"]: x for x in last["agents"]}
+    for ag in sim.agents:
+        if ag.alive:
+            assert [by[ag.id]["x"], by[ag.id]["y"]] == ag.pos
+
+
+def test_live_frame_matches_recorded_shape():
+    from dekot.state import frame, last_tick_id, record
+    rec = record(Config(seed=6))
+    sim = Simulation(Config(seed=6)).run()
+    live = frame(sim, last_tick_id(sim), [])
+    recorded = rec["frames"][-1]
+    assert set(live.keys()) == set(recorded.keys())
+    assert live["agents"] and set(live["agents"][0].keys()) == set(recorded["agents"][0].keys())
+    # a walking agent reports a destination; a stationary one reports null
+    seen_dest = seen_null = False
+    for f in rec["frames"]:
+        for ag in f["agents"]:
+            if ag["act"] == "walking" and ag["dx"] is not None:
+                seen_dest = True
+            if ag["act"] != "walking":
+                assert ag["dx"] is None
+                seen_null = True
+    assert seen_dest and seen_null
+
+
 def test_tick_stepping_matches_day_stepping():
     a = Simulation(Config(seed=5))
     while a.day < a.max_days and a.stopped is None:
